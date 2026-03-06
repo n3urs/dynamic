@@ -10,6 +10,9 @@ router.get('/walls/:id', (req, res, next) => {
 });
 
 // Climbs
+router.post('/climbs/map-positions', (req, res, next) => {
+  try { res.json(Route.updateClimbMapPositions(req.body.positions || [])); } catch (e) { next(e); }
+});
 router.post('/climbs', (req, res, next) => {
   try { res.json(Route.createClimb(req.body)); } catch (e) { next(e); }
 });

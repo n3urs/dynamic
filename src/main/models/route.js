@@ -28,14 +28,16 @@ const Route = {
     const db = getDb();
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO climbs (id, wall_id, grade, colour, setter, style_tags, date_set, date_strip_planned, status, notes, nfc_tag_id)
-      VALUES (@id, @wall_id, @grade, @colour, @setter, @style_tags, @date_set, @date_strip_planned, 'active', @notes, @nfc_tag_id)
+      INSERT INTO climbs (id, wall_id, grade, colour, setter, style_tags, date_set, date_strip_planned, status, notes, nfc_tag_id, map_x, map_y)
+      VALUES (@id, @wall_id, @grade, @colour, @setter, @style_tags, @date_set, @date_strip_planned, 'active', @notes, @nfc_tag_id, @map_x, @map_y)
     `).run({
       id, wall_id: data.wall_id, grade: data.grade, colour: data.colour,
       setter: data.setter || null, style_tags: data.style_tags || null,
       date_set: data.date_set || new Date().toISOString().split('T')[0],
       date_strip_planned: data.date_strip_planned || null,
       notes: data.notes || null, nfc_tag_id: data.nfc_tag_id || null,
+      map_x: data.map_x != null ? data.map_x : null,
+      map_y: data.map_y != null ? data.map_y : null,
     });
     return this.getClimbById(id);
   },
@@ -76,7 +78,7 @@ const Route = {
   updateClimb(id, data) {
     const db = getDb();
     const fields = ['wall_id', 'grade', 'colour', 'setter', 'style_tags', 'date_set',
-      'date_strip_planned', 'date_stripped', 'status', 'notes', 'snippet_video_path', 'nfc_tag_id'];
+      'date_strip_planned', 'date_stripped', 'status', 'notes', 'snippet_video_path', 'nfc_tag_id', 'map_x', 'map_y'];
     const updates = []; const params = { id };
     for (const f of fields) { if (data[f] !== undefined) { updates.push(`${f} = @${f}`); params[f] = data[f]; } }
     if (updates.length) {
@@ -342,6 +344,20 @@ const Route = {
     });
     db.prepare("UPDATE competitions SET status = 'completed' WHERE id = ?").run(id);
     return this.getCompetitionById(id);
+  },
+
+  // ---- Map position batch update ----
+
+  updateClimbMapPositions(positions) {
+    const db = getDb();
+    const stmt = db.prepare('UPDATE climbs SET map_x = @map_x, map_y = @map_y WHERE id = @id');
+    const updateMany = db.transaction((items) => {
+      for (const item of items) {
+        stmt.run({ id: item.id, map_x: item.map_x, map_y: item.map_y });
+      }
+    });
+    updateMany(positions);
+    return { updated: positions.length };
   },
 
   // ---- Routes due for stripping ----

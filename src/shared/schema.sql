@@ -464,6 +464,8 @@ CREATE TABLE IF NOT EXISTS climbs (
   notes TEXT,
   snippet_video_path TEXT,               -- local file path to short video clip
   nfc_tag_id TEXT,                       -- TapTag NFC identifier
+  map_x REAL,                            -- X position on gym map SVG
+  map_y REAL,                            -- Y position on gym map SVG
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

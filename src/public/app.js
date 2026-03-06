@@ -1788,6 +1788,76 @@ const HOLD_COLOURS = {
 };
 
 let routesWallFilter = null;
+let routesViewMode = 'cards'; // 'cards' or 'map'
+let mapGradeFilters = new Set();
+let mapColourFilters = new Set();
+let mapShowStripped = false;
+
+// Wall path definitions for SVG map
+const WALL_PATHS = {
+  wall_cove: {
+    path: 'M 50,40 L 540,40 L 540,110 L 470,130 L 390,125 L 300,130 L 210,122 L 130,140 L 90,190 L 70,270 L 60,340 L 48,270 L 38,200 L 45,120 Z',
+    fill: '#0EA5E9', label: 'Cove Wall', labelX: 280, labelY: 85
+  },
+  wall_mothership: {
+    path: 'M 300,200 L 380,180 L 440,220 L 450,300 L 420,370 L 340,390 L 280,350 L 260,270 Z',
+    fill: '#EAB308', label: 'Mothership', labelX: 355, labelY: 290
+  },
+  wall_mystery: {
+    path: 'M 580,100 L 700,80 L 750,150 L 760,250 L 750,350 L 730,420 L 650,480 L 580,500 L 560,420 L 570,320 L 575,220 Z',
+    fill: '#EF4444', label: 'Magical Mystery', labelX: 660, labelY: 290
+  }
+};
+
+// Get points along an SVG path for auto-distributing climbs
+function getPointsAlongPath(pathStr, numPoints) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', pathStr);
+  svg.appendChild(path);
+  document.body.appendChild(svg);
+  const totalLength = path.getTotalLength();
+  const points = [];
+  for (let i = 0; i < numPoints; i++) {
+    const distance = (totalLength / (numPoints + 1)) * (i + 1);
+    const pt = path.getPointAtLength(distance);
+    points.push({ x: Math.round(pt.x * 10) / 10, y: Math.round(pt.y * 10) / 10 });
+  }
+  document.body.removeChild(svg);
+  return points;
+}
+
+async function autoDistributeClimbs(climbs) {
+  // Group climbs missing positions by wall
+  const missing = {};
+  for (const c of climbs) {
+    if (c.map_x == null || c.map_y == null) {
+      if (!missing[c.wall_id]) missing[c.wall_id] = [];
+      missing[c.wall_id].push(c);
+    }
+  }
+  const wallIds = Object.keys(missing);
+  if (wallIds.length === 0) return;
+
+  const positions = [];
+  for (const wallId of wallIds) {
+    const wallDef = WALL_PATHS[wallId];
+    if (!wallDef) continue;
+    const wallClimbs = missing[wallId];
+    const pts = getPointsAlongPath(wallDef.path, wallClimbs.length);
+    for (let i = 0; i < wallClimbs.length; i++) {
+      wallClimbs[i].map_x = pts[i].x;
+      wallClimbs[i].map_y = pts[i].y;
+      positions.push({ id: wallClimbs[i].id, map_x: pts[i].x, map_y: pts[i].y });
+    }
+  }
+
+  if (positions.length > 0) {
+    try {
+      await api('POST', '/api/routes/climbs/map-positions', { positions });
+    } catch (e) { console.warn('Failed to save auto-distributed positions:', e); }
+  }
+}
 
 async function loadRoutes() {
   const el = document.getElementById('page-routes');
@@ -1797,20 +1867,292 @@ async function loadRoutes() {
         <h2 class="text-2xl font-bold text-gray-900">Routes</h2>
         <p class="text-gray-500 mt-1">Manage climbs across all walls</p>
       </div>
-      <button onclick="showAddClimbModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">+ Add Climb</button>
+      <div class="flex items-center gap-3">
+        <div class="flex bg-gray-100 rounded-lg p-0.5">
+          <button onclick="switchRoutesView('cards')" id="routes-view-cards" class="px-3 py-1.5 text-sm font-medium rounded-md transition ${routesViewMode === 'cards' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>Cards
+          </button>
+          <button onclick="switchRoutesView('map')" id="routes-view-map" class="px-3 py-1.5 text-sm font-medium rounded-md transition ${routesViewMode === 'map' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>Map
+          </button>
+        </div>
+        <button onclick="showAddClimbModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">+ Add Climb</button>
+      </div>
     </div>
 
     <!-- Wall Filter Tabs -->
-    <div class="flex gap-2 mb-6" id="wall-filter-tabs"></div>
+    <div class="flex gap-2 mb-4" id="wall-filter-tabs"></div>
 
-    <!-- Grade Distribution -->
-    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-6" id="grade-distribution-chart"></div>
+    <!-- Map Filter Bar (hidden when in cards mode) -->
+    <div id="map-filter-bar" class="mb-4 ${routesViewMode === 'map' ? '' : 'hidden'}">
+      <div class="bg-white border border-gray-200 rounded-xl p-3">
+        <div class="flex flex-wrap items-center gap-4">
+          <!-- Grade chips -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-500 mr-1">Grade:</span>
+            <div class="flex flex-wrap gap-1" id="map-grade-chips"></div>
+          </div>
+          <!-- Colour filters -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-500 mr-1">Colour:</span>
+            <div class="flex gap-1" id="map-colour-chips"></div>
+          </div>
+          <!-- Show stripped toggle -->
+          <label class="flex items-center gap-1.5 cursor-pointer ml-auto">
+            <input type="checkbox" id="map-show-stripped" onchange="mapShowStripped=this.checked;renderMapView()" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            <span class="text-xs text-gray-500">Show stripped</span>
+          </label>
+        </div>
+      </div>
+    </div>
 
-    <!-- Climb Cards -->
-    <div id="routes-climb-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <!-- Cards view -->
+    <div id="routes-cards-view" class="${routesViewMode === 'cards' ? '' : 'hidden'}">
+      <div class="bg-white border border-gray-200 rounded-xl p-4 mb-6" id="grade-distribution-chart"></div>
+      <div id="routes-climb-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </div>
+
+    <!-- Map view -->
+    <div id="routes-map-view" class="${routesViewMode === 'map' ? '' : 'hidden'}">
+      <div id="gym-map-container" class="bg-white border border-gray-200 rounded-xl overflow-hidden relative" style="touch-action:none;">
+        <div id="gym-map-wrapper" style="position:relative;width:100%;padding-bottom:75%;overflow:hidden;">
+          <svg id="gym-map-svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet"
+               style="position:absolute;top:0;left:0;width:100%;height:100%;background:#F9FAFB;"
+               xmlns="http://www.w3.org/2000/svg">
+            <!-- Grid pattern -->
+            <defs>
+              <pattern id="gym-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/>
+              </pattern>
+            </defs>
+            <rect width="800" height="600" fill="url(#gym-grid)"/>
+
+            <!-- Wall shapes -->
+            <path d="${WALL_PATHS.wall_cove.path}" fill="${WALL_PATHS.wall_cove.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.6" stroke-width="2"/>
+            <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.6" stroke-width="2"/>
+            <path d="${WALL_PATHS.wall_mystery.path}" fill="${WALL_PATHS.wall_mystery.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.6" stroke-width="2"/>
+
+            <!-- Wall labels -->
+            <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="18" font-weight="700">COVE WALL</text>
+            <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="16" font-weight="700">MOTHERSHIP</text>
+            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MAGICAL</text>
+            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY + 18}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MYSTERY</text>
+
+            <!-- Reception marker -->
+            <g transform="translate(80,450)">
+              <rect x="-18" y="-12" width="36" height="24" rx="4" fill="#94A3B8" fill-opacity="0.3" stroke="#94A3B8" stroke-opacity="0.5" stroke-width="1"/>
+              <text x="0" y="5" text-anchor="middle" fill="#64748B" font-size="10" font-weight="600">REC</text>
+            </g>
+
+            <!-- Climb dots rendered here -->
+            <g id="map-climbs-group"></g>
+          </svg>
+        </div>
+        <!-- Zoom controls -->
+        <div class="absolute top-3 right-3 flex flex-col gap-1">
+          <button onclick="mapZoom(1.3)" class="w-8 h-8 bg-white border border-gray-300 rounded-lg shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-50 text-lg font-bold">+</button>
+          <button onclick="mapZoom(1/1.3)" class="w-8 h-8 bg-white border border-gray-300 rounded-lg shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-50 text-lg font-bold">−</button>
+          <button onclick="mapReset()" class="w-8 h-8 bg-white border border-gray-300 rounded-lg shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-50 text-xs font-medium">⟲</button>
+        </div>
+        <!-- Tooltip -->
+        <div id="map-tooltip" class="hidden absolute bg-gray-900 text-white text-xs rounded-lg px-3 py-2 pointer-events-none shadow-lg z-50" style="max-width:200px;"></div>
+      </div>
+    </div>
   `;
 
+  // Build filter chips for map
+  buildMapFilterChips();
   await renderRoutesPage();
+}
+
+function switchRoutesView(mode) {
+  routesViewMode = mode;
+  document.getElementById('routes-view-cards').className = `px-3 py-1.5 text-sm font-medium rounded-md transition ${mode === 'cards' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`;
+  document.getElementById('routes-view-map').className = `px-3 py-1.5 text-sm font-medium rounded-md transition ${mode === 'map' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`;
+
+  const cardsView = document.getElementById('routes-cards-view');
+  const mapView = document.getElementById('routes-map-view');
+  const filterBar = document.getElementById('map-filter-bar');
+
+  if (mode === 'cards') {
+    cardsView.classList.remove('hidden');
+    mapView.classList.add('hidden');
+    filterBar.classList.add('hidden');
+  } else {
+    cardsView.classList.add('hidden');
+    mapView.classList.remove('hidden');
+    filterBar.classList.remove('hidden');
+    renderMapView();
+  }
+}
+
+function buildMapFilterChips() {
+  const gradeContainer = document.getElementById('map-grade-chips');
+  const colourContainer = document.getElementById('map-colour-chips');
+  if (!gradeContainer || !colourContainer) return;
+
+  const grades = ['VB','V0','V1','V2','V3','V4','V5','V6','V7','V8','V9'];
+  gradeContainer.innerHTML = grades.map(g => {
+    const active = mapGradeFilters.size === 0 || mapGradeFilters.has(g);
+    return `<button onclick="toggleMapGrade('${g}')" class="px-2 py-0.5 rounded-full text-xs font-bold transition ${active ? 'text-white' : 'opacity-30 text-white'}" style="background:${GRADE_COLOURS[g]}">${g}</button>`;
+  }).join('');
+
+  colourContainer.innerHTML = Object.entries(HOLD_COLOURS).map(([name, hex]) => {
+    const active = mapColourFilters.size === 0 || mapColourFilters.has(name);
+    const border = name === 'Black' ? 'border-gray-400' : 'border-transparent';
+    return `<button onclick="toggleMapColour('${name}')" class="w-6 h-6 rounded-full border-2 ${border} transition ${active ? '' : 'opacity-20'}" style="background:${hex}" title="${name}"></button>`;
+  }).join('');
+}
+
+function toggleMapGrade(grade) {
+  if (mapGradeFilters.has(grade)) {
+    mapGradeFilters.delete(grade);
+  } else {
+    mapGradeFilters.add(grade);
+  }
+  // If all selected, clear filter (show all)
+  if (mapGradeFilters.size === 11) mapGradeFilters.clear();
+  buildMapFilterChips();
+  renderMapView();
+}
+
+function toggleMapColour(colour) {
+  if (mapColourFilters.has(colour)) {
+    mapColourFilters.delete(colour);
+  } else {
+    mapColourFilters.add(colour);
+  }
+  if (mapColourFilters.size === Object.keys(HOLD_COLOURS).length) mapColourFilters.clear();
+  buildMapFilterChips();
+  renderMapView();
+}
+
+// Map zoom/pan state
+let mapViewBox = { x: 0, y: 0, w: 800, h: 600 };
+
+function mapZoom(factor) {
+  const svg = document.getElementById('gym-map-svg');
+  if (!svg) return;
+  const cx = mapViewBox.x + mapViewBox.w / 2;
+  const cy = mapViewBox.y + mapViewBox.h / 2;
+  mapViewBox.w = Math.max(200, Math.min(1600, mapViewBox.w / factor));
+  mapViewBox.h = Math.max(150, Math.min(1200, mapViewBox.h / factor));
+  mapViewBox.x = cx - mapViewBox.w / 2;
+  mapViewBox.y = cy - mapViewBox.h / 2;
+  svg.setAttribute('viewBox', `${mapViewBox.x} ${mapViewBox.y} ${mapViewBox.w} ${mapViewBox.h}`);
+}
+
+function mapReset() {
+  mapViewBox = { x: 0, y: 0, w: 800, h: 600 };
+  const svg = document.getElementById('gym-map-svg');
+  if (svg) svg.setAttribute('viewBox', '0 0 800 600');
+}
+
+// Touch/mouse pan support
+(function setupMapPan() {
+  let isPanning = false, startX, startY, startVBX, startVBY;
+
+  document.addEventListener('pointerdown', (e) => {
+    const svg = document.getElementById('gym-map-svg');
+    if (!svg || !svg.contains(e.target)) return;
+    // Don't pan if clicking a climb dot
+    if (e.target.closest('.climb-dot-group')) return;
+    isPanning = true;
+    startX = e.clientX; startY = e.clientY;
+    startVBX = mapViewBox.x; startVBY = mapViewBox.y;
+    svg.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!isPanning) return;
+    const svg = document.getElementById('gym-map-svg');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = mapViewBox.w / rect.width;
+    const scaleY = mapViewBox.h / rect.height;
+    mapViewBox.x = startVBX - (e.clientX - startX) * scaleX;
+    mapViewBox.y = startVBY - (e.clientY - startY) * scaleY;
+    svg.setAttribute('viewBox', `${mapViewBox.x} ${mapViewBox.y} ${mapViewBox.w} ${mapViewBox.h}`);
+  });
+
+  document.addEventListener('pointerup', () => {
+    if (!isPanning) return;
+    isPanning = false;
+    const svg = document.getElementById('gym-map-svg');
+    if (svg) svg.style.cursor = 'grab';
+  });
+
+  // Mouse wheel zoom
+  document.addEventListener('wheel', (e) => {
+    const svg = document.getElementById('gym-map-svg');
+    if (!svg || !svg.contains(e.target)) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    mapZoom(factor);
+  }, { passive: false });
+})();
+
+// Cache for climbs data used by map
+let _mapClimbsCache = [];
+
+async function renderMapView() {
+  const group = document.getElementById('map-climbs-group');
+  if (!group) return;
+
+  let climbs = _mapClimbsCache;
+  if (!climbs.length) return;
+
+  // Filter
+  let filtered = climbs.filter(c => {
+    if (!mapShowStripped && c.status !== 'active') return false;
+    if (routesWallFilter && c.wall_id !== routesWallFilter) return false;
+    if (mapGradeFilters.size > 0 && !mapGradeFilters.has(c.grade)) return false;
+    if (mapColourFilters.size > 0 && !mapColourFilters.has(c.colour)) return false;
+    return c.map_x != null && c.map_y != null;
+  });
+
+  group.innerHTML = filtered.map(c => {
+    const fillColour = HOLD_COLOURS[c.colour] || '#6B7280';
+    const textColour = ['Yellow', 'Mint'].includes(c.colour) ? '#1a1a1a' : '#ffffff';
+    const isStripped = c.status === 'stripped';
+    return `
+      <g class="climb-dot-group" data-climb-id="${c.id}" style="cursor:pointer"
+         onmouseenter="showMapTooltip(event, this)" onmouseleave="hideMapTooltip()"
+         onclick="openClimbDetail('${c.id}')">
+        <circle cx="${c.map_x}" cy="${c.map_y}" r="14" fill="${fillColour}" stroke="white" stroke-width="2" ${isStripped ? 'opacity="0.4"' : ''}/>
+        <text x="${c.map_x}" y="${c.map_y + 3}" text-anchor="middle" fill="${textColour}" font-size="8" font-weight="700" ${isStripped ? 'opacity="0.4"' : ''}>${c.grade}</text>
+      </g>
+    `;
+  }).join('');
+}
+
+function showMapTooltip(event, el) {
+  const tooltip = document.getElementById('map-tooltip');
+  if (!tooltip) return;
+  const climbId = el.getAttribute('data-climb-id');
+  const climb = _mapClimbsCache.find(c => c.id === climbId);
+  if (!climb) return;
+
+  tooltip.innerHTML = `
+    <div class="font-bold">${climb.grade} — ${climb.colour}</div>
+    <div>${climb.wall_name}</div>
+    ${climb.setter ? `<div>Setter: ${climb.setter}</div>` : ''}
+    ${climb.style_tags ? `<div>${climb.style_tags}</div>` : ''}
+    <div class="text-gray-400">Set: ${formatDate(climb.date_set)}</div>
+  `;
+  tooltip.classList.remove('hidden');
+
+  const container = document.getElementById('gym-map-container');
+  const containerRect = container.getBoundingClientRect();
+  const x = event.clientX - containerRect.left + 12;
+  const y = event.clientY - containerRect.top - 10;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+function hideMapTooltip() {
+  const tooltip = document.getElementById('map-tooltip');
+  if (tooltip) tooltip.classList.add('hidden');
 }
 
 async function renderRoutesPage() {
@@ -1823,6 +2165,20 @@ async function renderRoutesPage() {
     ]);
 
     const allClimbs = [...activeClimbs, ...strippedClimbs];
+
+    // Auto-distribute climbs missing map positions
+    const needsPosition = allClimbs.filter(c => c.map_x == null || c.map_y == null);
+    if (needsPosition.length > 0) {
+      await autoDistributeClimbs(allClimbs);
+    }
+
+    // Cache for map view
+    _mapClimbsCache = allClimbs;
+
+    // Render map if in map mode
+    if (routesViewMode === 'map') {
+      renderMapView();
+    }
 
     // Wall filter tabs
     const tabContainer = document.getElementById('wall-filter-tabs');
@@ -1911,7 +2267,20 @@ async function renderRoutesPage() {
 
 function setWallFilter(wallId) {
   routesWallFilter = wallId;
-  renderRoutesPage();
+  if (routesViewMode === 'map') {
+    renderMapView();
+    // Also update wall tabs visuals
+    const tabContainer = document.getElementById('wall-filter-tabs');
+    if (tabContainer) {
+      tabContainer.querySelectorAll('button').forEach(btn => {
+        const isAll = btn.textContent.trim() === 'All';
+        const isActive = isAll ? !wallId : btn.textContent.trim() === (wallId === 'wall_cove' ? 'Cove Wall' : wallId === 'wall_mothership' ? 'Mothership' : wallId === 'wall_mystery' ? 'Magical Mystery' : '');
+        btn.className = `px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+      });
+    }
+  } else {
+    renderRoutesPage();
+  }
 }
 
 function showAddClimbModal(existingClimb = null) {
@@ -1971,6 +2340,28 @@ function showAddClimbModal(existingClimb = null) {
             <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
             <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Any additional notes...">${isEdit ? (existingClimb.notes || '') : ''}</textarea>
           </div>
+
+          <!-- Map position picker -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Map Position <span class="text-gray-400 font-normal">(click to place)</span></label>
+            <div class="border border-gray-200 rounded-lg overflow-hidden bg-gray-50" style="position:relative">
+              <svg id="climb-form-minimap" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet"
+                   style="width:100%;height:200px;background:#F9FAFB;cursor:crosshair"
+                   onclick="placeClimbOnMinimap(event)">
+                <defs><pattern id="minigrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/></pattern></defs>
+                <rect width="800" height="600" fill="url(#minigrid)"/>
+                <path d="${WALL_PATHS.wall_cove.path}" fill="${WALL_PATHS.wall_cove.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
+                <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
+                <path d="${WALL_PATHS.wall_mystery.path}" fill="${WALL_PATHS.wall_mystery.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
+                <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="700">COVE</text>
+                <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#94A3B8" font-size="12" font-weight="700">MOTHERSHIP</text>
+                <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#94A3B8" font-size="11" font-weight="700">MYSTERY</text>
+                <circle id="minimap-preview-dot" cx="${isEdit && existingClimb.map_x ? existingClimb.map_x : 0}" cy="${isEdit && existingClimb.map_y ? existingClimb.map_y : 0}" r="10" fill="#3B82F6" stroke="white" stroke-width="2" ${isEdit && existingClimb.map_x ? '' : 'visibility="hidden"'}/>
+              </svg>
+            </div>
+            <input type="hidden" name="map_x" id="climb-form-map-x" value="${isEdit && existingClimb.map_x != null ? existingClimb.map_x : ''}">
+            <input type="hidden" name="map_y" id="climb-form-map-y" value="${isEdit && existingClimb.map_y != null ? existingClimb.map_y : ''}">
+          </div>
         </div>
         <div id="climb-form-error" class="text-red-500 text-sm mt-3 hidden"></div>
         <div class="flex justify-end gap-2 mt-6">
@@ -1987,6 +2378,23 @@ function updateColourPreview(select) {
   if (preview) preview.style.background = HOLD_COLOURS[select.value] || '#6B7280';
 }
 
+function placeClimbOnMinimap(event) {
+  const svg = document.getElementById('climb-form-minimap');
+  if (!svg) return;
+  const pt = svg.createSVGPoint();
+  pt.x = event.clientX;
+  pt.y = event.clientY;
+  const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+  const dot = document.getElementById('minimap-preview-dot');
+  dot.setAttribute('cx', svgPt.x);
+  dot.setAttribute('cy', svgPt.y);
+  dot.setAttribute('visibility', 'visible');
+
+  document.getElementById('climb-form-map-x').value = Math.round(svgPt.x * 10) / 10;
+  document.getElementById('climb-form-map-y').value = Math.round(svgPt.y * 10) / 10;
+}
+
 async function submitClimbForm(e, climbId) {
   e.preventDefault();
   const form = document.getElementById('climb-form');
@@ -1994,6 +2402,8 @@ async function submitClimbForm(e, climbId) {
   if (!data.setter) delete data.setter;
   if (!data.style_tags) delete data.style_tags;
   if (!data.notes) delete data.notes;
+  if (data.map_x !== '' && data.map_x != null) { data.map_x = parseFloat(data.map_x); } else { delete data.map_x; }
+  if (data.map_y !== '' && data.map_y != null) { data.map_y = parseFloat(data.map_y); } else { delete data.map_y; }
 
   try {
     if (climbId) {
