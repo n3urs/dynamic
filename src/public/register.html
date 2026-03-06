@@ -58,9 +58,9 @@
       <h2 class="text-xl font-bold text-gray-900 mb-2">Induction Video</h2>
       <p class="text-gray-500 text-sm mb-4">Please watch the full induction video before continuing. This covers important safety information.</p>
 
-      <div class="bg-black rounded-xl overflow-hidden mb-4 aspect-video">
-        <div id="yt-player-container">
-          <div id="yt-player"></div>
+      <div class="bg-black rounded-xl overflow-hidden mb-4 aspect-video relative">
+        <div id="yt-player-container" class="absolute inset-0">
+          <div id="yt-player" style="width:100%;height:100%;"></div>
         </div>
       </div>
 
@@ -458,7 +458,10 @@
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
-          disablekb: 1
+          disablekb: 1,
+          controls: 0,
+          fs: 0,
+          iv_load_policy: 3
         },
         events: {
           onStateChange: onPlayerStateChange
