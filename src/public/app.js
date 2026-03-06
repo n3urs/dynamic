@@ -1796,16 +1796,22 @@ let mapShowStripped = false;
 // Wall path definitions for SVG map
 const WALL_PATHS = {
   wall_cove: {
-    path: 'M 50,40 L 540,40 L 540,110 L 470,130 L 390,125 L 300,130 L 210,122 L 130,140 L 90,190 L 70,270 L 60,340 L 48,270 L 38,200 L 45,120 Z',
-    fill: '#0EA5E9', label: 'Cove Wall', labelX: 280, labelY: 85
+    // Open line: zig-zags across top, then drops down right side
+    path: 'M 100,130 L 145,155 L 260,100 L 400,155 L 530,100 L 620,100 L 660,180 L 680,300 L 690,420 L 690,450',
+    fill: '#0EA5E9', label: 'Cove Wall', labelX: 350, labelY: 80, closed: false,
+    climbOffset: 28
   },
   wall_mothership: {
-    path: 'M 300,200 L 380,180 L 440,220 L 450,300 L 420,370 L 340,390 L 280,350 L 260,270 Z',
-    fill: '#EAB308', label: 'Mothership', labelX: 355, labelY: 290
+    // Elongated octagon in centre — climbs go OUTSIDE
+    path: 'M 280,320 L 280,245 L 320,210 L 500,205 L 540,240 L 540,320 L 500,355 L 320,360 Z',
+    fill: '#EAB308', label: 'Mothership', labelX: 410, labelY: 290, closed: true,
+    climbOffset: -28
   },
   wall_mystery: {
-    path: 'M 580,100 L 700,80 L 750,150 L 760,250 L 750,350 L 730,420 L 650,480 L 580,500 L 560,420 L 570,320 L 575,220 Z',
-    fill: '#EF4444', label: 'Magical Mystery', labelX: 660, labelY: 290
+    // Open line across bottom — shallow arch. Climbs go ABOVE (inward)
+    path: 'M 120,490 L 170,530 L 380,505 L 560,520 L 650,560',
+    fill: '#EF4444', label: 'Magical Mystery', labelX: 390, labelY: 555, closed: false,
+    climbOffset: -28
   }
 };
 
@@ -1845,10 +1851,23 @@ async function autoDistributeClimbs(climbs) {
     if (!wallDef) continue;
     const wallClimbs = missing[wallId];
     const pts = getPointsAlongPath(wallDef.path, wallClimbs.length);
+    const offset = wallDef.climbOffset || 0;
     for (let i = 0; i < wallClimbs.length; i++) {
-      wallClimbs[i].map_x = pts[i].x;
-      wallClimbs[i].map_y = pts[i].y;
-      positions.push({ id: wallClimbs[i].id, map_x: pts[i].x, map_y: pts[i].y });
+      // Offset climbs inward from the wall using normal direction
+      let ox = pts[i].x, oy = pts[i].y;
+      if (offset !== 0 && i < pts.length) {
+        // Get tangent at this point and compute perpendicular offset
+        const prev = i > 0 ? pts[i-1] : pts[i];
+        const next = i < pts.length - 1 ? pts[i+1] : pts[i];
+        const dx = next.x - prev.x, dy = next.y - prev.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        // Perpendicular: rotate tangent 90 degrees
+        ox = pts[i].x + (-dy / len) * offset;
+        oy = pts[i].y + (dx / len) * offset;
+      }
+      wallClimbs[i].map_x = Math.round(ox * 10) / 10;
+      wallClimbs[i].map_y = Math.round(oy * 10) / 10;
+      positions.push({ id: wallClimbs[i].id, map_x: wallClimbs[i].map_x, map_y: wallClimbs[i].map_y });
     }
   }
 
@@ -1928,18 +1947,20 @@ async function loadRoutes() {
             <rect width="800" height="600" fill="url(#gym-grid)"/>
 
             <!-- Wall shapes -->
-            <path d="${WALL_PATHS.wall_cove.path}" fill="${WALL_PATHS.wall_cove.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.6" stroke-width="2"/>
-            <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.6" stroke-width="2"/>
-            <path d="${WALL_PATHS.wall_mystery.path}" fill="${WALL_PATHS.wall_mystery.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.6" stroke-width="2"/>
+            <!-- Cove Wall: open path (no fill), thick stroke -->
+            <path d="${WALL_PATHS.wall_cove.path}" fill="none" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Mothership: closed octagon with fill -->
+            <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.12" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.6" stroke-width="3"/>
+            <!-- Magical Mystery: open path (no fill), thick stroke -->
+            <path d="${WALL_PATHS.wall_mystery.path}" fill="none" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
             <!-- Wall labels -->
             <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="18" font-weight="700">COVE WALL</text>
             <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="16" font-weight="700">MOTHERSHIP</text>
-            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MAGICAL</text>
-            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY + 18}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MYSTERY</text>
+            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MAGICAL MYSTERY</text>
 
-            <!-- Reception marker -->
-            <g transform="translate(80,450)">
+            <!-- Reception marker — top left -->
+            <g transform="translate(60,65)">
               <rect x="-18" y="-12" width="36" height="24" rx="4" fill="#94A3B8" fill-opacity="0.3" stroke="#94A3B8" stroke-opacity="0.5" stroke-width="1"/>
               <text x="0" y="5" text-anchor="middle" fill="#64748B" font-size="10" font-weight="600">REC</text>
             </g>
@@ -2350,9 +2371,9 @@ function showAddClimbModal(existingClimb = null) {
                    onclick="placeClimbOnMinimap(event)">
                 <defs><pattern id="minigrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/></pattern></defs>
                 <rect width="800" height="600" fill="url(#minigrid)"/>
-                <path d="${WALL_PATHS.wall_cove.path}" fill="${WALL_PATHS.wall_cove.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
-                <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
-                <path d="${WALL_PATHS.wall_mystery.path}" fill="${WALL_PATHS.wall_mystery.fill}" fill-opacity="0.15" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.5" stroke-width="1.5"/>
+                <path d="${WALL_PATHS.wall_cove.path}" fill="none" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.1" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.5" stroke-width="2"/>
+                <path d="${WALL_PATHS.wall_mystery.path}" fill="none" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                 <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="700">COVE</text>
                 <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#94A3B8" font-size="12" font-weight="700">MOTHERSHIP</text>
                 <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#94A3B8" font-size="11" font-weight="700">MYSTERY</text>
