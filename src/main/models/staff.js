@@ -39,27 +39,27 @@ const DEFAULT_PERMISSIONS = {
   centre_assistant: {
     checkin: true, pos: true, members_view: true, members_edit: false,
     events_view: true, events_edit: false, routes_view: true, routes_edit: false,
-    analytics: false, settings: false, staff: false,
+    analytics: false, settings: false, staff: false, waiver_validate: true,
   },
   duty_manager: {
     checkin: true, pos: true, members_view: true, members_edit: true,
     events_view: true, events_edit: true, routes_view: true, routes_edit: true,
-    analytics: true, settings: false, staff: false,
+    analytics: false, settings: false, staff: false, waiver_validate: true,
   },
   setter: {
     checkin: true, pos: false, members_view: false, members_edit: false,
     events_view: true, events_edit: false, routes_view: true, routes_edit: true,
-    analytics: false, settings: false, staff: false,
+    analytics: false, settings: false, staff: false, waiver_validate: false,
   },
   tech_lead: {
     checkin: true, pos: true, members_view: true, members_edit: true,
     events_view: true, events_edit: true, routes_view: true, routes_edit: true,
-    analytics: true, settings: true, staff: true,
+    analytics: true, settings: true, staff: true, waiver_validate: true,
   },
   owner: {
     checkin: true, pos: true, members_view: true, members_edit: true,
     events_view: true, events_edit: true, routes_view: true, routes_edit: true,
-    analytics: true, settings: true, staff: true,
+    analytics: true, settings: true, staff: true, waiver_validate: true,
   },
 };
 
@@ -200,7 +200,7 @@ const Staff = {
       last_name: 'Sullivan',
       email: 'oscar@sullivanltd.co.uk',
       role: 'owner',
-      pin: '1234',
+      pin: '2109',
       password: 'boulderryn2024',
     });
 

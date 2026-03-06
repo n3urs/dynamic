@@ -6,6 +6,7 @@
 let posCart = [];
 let posSelectedMember = null;
 let posSelectedCategory = null;
+let posOperator = null; // Staff member operating POS for this transaction
 let posClock = null;
 let posAutoCheckin = true; // default ON for day entry check-in toggle
 
@@ -62,6 +63,9 @@ async function loadPOS() {
             <button onclick="posAddCustomItem()" class="w-8 h-8 rounded bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300" title="Add custom item">+</button>
           </div>
         </div>
+
+        <!-- Operator badge -->
+        <div id="pos-operator-badge" class="px-4 py-1 border-b border-slate-700"></div>
 
         <!-- Member / Warning -->
         <div id="pos-member-section" class="px-4 py-2 border-b border-slate-700">
@@ -218,6 +222,19 @@ function posRenderProductGrid(categoryId) {
 }
 
 async function posAddToCart(productId) {
+  // If no operator assigned yet, require PIN first
+  if (!posOperator) {
+    requirePin('pos', (staff) => {
+      posOperator = staff;
+      posRenderOperatorBadge();
+      _doAddToCart(productId);
+    }, 'Staff PIN', 'Identify yourself to start a transaction');
+    return;
+  }
+  _doAddToCart(productId);
+}
+
+async function _doAddToCart(productId) {
   const product = await api('GET', `/api/products/${productId}`);
   if (!product) return;
 
@@ -228,11 +245,9 @@ async function posAddToCart(productId) {
 
   // Check if Day Entry product and no member linked
   if (product.category_name === 'Day Entry' && !posSelectedMember) {
-    const proceed = confirm('No member linked. Day Entry products should be linked to a member for check-in.\n\nLink a member first?');
-    if (proceed) {
-      posLinkProfile();
-      return;
-    }
+    showToast('Link a member first for Day Entry', 'error');
+    posLinkProfile();
+    return;
   }
 
   const existing = posCart.find(item => item.product_id === productId);
@@ -251,6 +266,16 @@ async function posAddToCart(productId) {
 
   posRenderCart();
   if (posSelectedMember) posRenderMemberDisplay();
+}
+
+function posRenderOperatorBadge() {
+  const el = document.getElementById('pos-operator-badge');
+  if (!el || !posOperator) return;
+  const initials = (posOperator.first_name[0] + posOperator.last_name[0]).toUpperCase();
+  el.innerHTML = `<div class="flex items-center gap-2 text-xs text-slate-300">
+    <div class="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">${initials}</div>
+    <span>${posOperator.first_name}</span>
+  </div>`;
 }
 
 function posRemoveFromCart(index) {
@@ -452,7 +477,7 @@ async function posPayMethod(method) {
       const savedAutoCheckin = posAutoCheckin;
       const txn = await api('POST', '/api/transactions', {
         member_id: posSelectedMember ? posSelectedMember.id : null,
-        staff_id: window.currentStaff ? window.currentStaff.id : null,
+        staff_id: posOperator ? posOperator.id : null,
         payment_method: 'gift_card',
         payment_status: 'completed',
         payment_reference: code,
@@ -501,7 +526,7 @@ async function posPayMethod(method) {
     const savedAutoCheckin = posAutoCheckin;
     const txn = await api('POST', '/api/transactions', {
       member_id: posSelectedMember ? posSelectedMember.id : null,
-      staff_id: window.currentStaff ? window.currentStaff.id : null,
+      staff_id: posOperator ? posOperator.id : null,
       payment_method: paymentMethod,
       payment_status: 'completed',
       items: posCart,
@@ -668,16 +693,56 @@ async function posSendQrEmail(memberId) {
 function posNewTx() {
   posCart = [];
   posSelectedMember = null;
+  posOperator = null;
   posAutoCheckin = true;
   posClearMember();
   posRenderCart();
+  // Clear operator badge
+  const badge = document.getElementById('pos-operator-badge');
+  if (badge) badge.innerHTML = '';
 }
 
 function posProductSearch() {
-  const query = prompt('Search products:');
-  if (!query || query.length < 2) return;
+  showModal(`
+    <div class="max-w-md mx-auto">
+      <h3 class="text-lg font-bold text-gray-900 mb-4">Search Products</h3>
+      <input type="text" id="pos-product-search-input" placeholder="Search products..."
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+        oninput="posFilterProductSearch(this.value)" autofocus>
+      <div id="pos-product-search-results" class="mt-3 space-y-1 max-h-64 overflow-y-auto"></div>
+      <div class="mt-4 text-right">
+        <button onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('pos-product-search-input')?.focus(), 100);
+}
 
-  // Search through all loaded products
+function posFilterProductSearch(query) {
+  const container = document.getElementById('pos-product-search-results');
+  if (!query || query.length < 2 || !window._posProducts) {
+    container.innerHTML = '<p class="text-sm text-gray-400">Type at least 2 characters...</p>';
+    return;
+  }
+  const matches = [];
+  window._posProducts.forEach(g => {
+    g.products.forEach(p => {
+      if (p.name.toLowerCase().includes(query.toLowerCase())) matches.push(p);
+    });
+  });
+  if (matches.length === 0) {
+    container.innerHTML = '<p class="text-sm text-gray-400">No products found</p>';
+    return;
+  }
+  container.innerHTML = matches.slice(0, 15).map(p =>
+    `<div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition" onclick="closeModal(); posAddToCart('${p.id}')">
+      <span class="text-sm font-medium text-gray-900">${p.name}</span>
+      <span class="text-sm text-gray-500">&pound;${p.price.toFixed(2)}</span>
+    </div>`
+  ).join('');
+}
+
+function _posShowSearchResults(query) {
   if (!window._posProducts) return;
   const matches = [];
   window._posProducts.forEach(g => {
@@ -748,13 +813,48 @@ function posQuickCheckIn() {
 }
 
 function posAddCustomItem() {
-  const name = prompt('Custom item name:');
-  if (!name) return;
-  const priceStr = prompt('Price (£):');
-  if (!priceStr) return;
-  const price = parseFloat(priceStr);
+  showModal(`
+    <div class="max-w-sm mx-auto p-2">
+      <h3 class="text-lg font-bold text-gray-900 mb-4">Custom Item</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Item Name</label>
+          <input type="text" id="custom-item-name" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Shoe repair">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Price (&pound;)</label>
+          <input type="number" id="custom-item-price" step="0.01" min="0" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00">
+        </div>
+      </div>
+      <div class="mt-4 flex gap-2 justify-end">
+        <button onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+        <button onclick="posSubmitCustomItem()" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Add to Cart</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('custom-item-name')?.focus(), 100);
+}
+
+function posSubmitCustomItem() {
+  const name = document.getElementById('custom-item-name').value.trim();
+  const price = parseFloat(document.getElementById('custom-item-price').value);
+  if (!name) { showToast('Enter item name', 'error'); return; }
   if (isNaN(price) || price < 0) { showToast('Invalid price', 'error'); return; }
 
+  // Custom items also need operator
+  if (!posOperator) {
+    closeModal();
+    requirePin('pos', (staff) => {
+      posOperator = staff;
+      posRenderOperatorBadge();
+      _addCustomToCart(name, price);
+    }, 'Staff PIN', 'Identify yourself');
+    return;
+  }
+  _addCustomToCart(name, price);
+}
+
+function _addCustomToCart(name, price) {
   posCart.push({
     product_id: null,
     description: name,
@@ -763,6 +863,7 @@ function posAddCustomItem() {
     total_price: price,
   });
   posRenderCart();
+  closeModal();
 }
 
 async function showDailySummaryModal() {

@@ -101,44 +101,137 @@ function getRoleBadgeHTML(role, size = 'sm') {
 }
 
 // ============================================================
-// Auth / Login System
+// PIN Challenge System (per-action auth)
 // ============================================================
 
-window.currentStaff = null;
+// No persistent login. Every action that needs staff auth triggers a PIN challenge.
+// The PIN identifies the staff member and checks if they have the required permission.
 
-async function initAuth() {
-  // Check localStorage for existing session
-  const saved = localStorage.getItem('boulderryn_staff');
-  if (saved) {
-    try {
-      const staff = JSON.parse(saved);
-      // Verify staff still exists and is active
-      const verified = await api('GET', `/api/staff/${staff.id}`);
-      if (verified && verified.is_active) {
-        window.currentStaff = verified;
-        onLoginSuccess();
-        return;
-      }
-    } catch (e) {
-      localStorage.removeItem('boulderryn_staff');
+window.currentStaff = null; // Only set temporarily during specific flows (e.g., POS operator)
+let _challengePinValue = '';
+let _challengeCallback = null;
+let _challengePermission = null;
+
+/**
+ * Show PIN challenge modal. Calls callback(staff) on success.
+ * @param {string} permission - Required permission (e.g., 'pos', 'analytics', 'members_edit')
+ * @param {function} callback - Called with staff object on successful auth
+ * @param {string} [title] - Optional custom title
+ * @param {string} [desc] - Optional description text
+ */
+function requirePin(permission, callback, title, desc) {
+  _challengePinValue = '';
+  _challengeCallback = callback;
+  _challengePermission = permission;
+
+  document.getElementById('pin-challenge-title').textContent = title || 'Enter Staff PIN';
+  document.getElementById('pin-challenge-desc').textContent = desc || '';
+  document.getElementById('challenge-pin-error').textContent = '';
+  document.getElementById('challenge-pin-staff').innerHTML = '';
+  updateChallengeDots();
+
+  document.getElementById('pin-challenge-overlay').classList.remove('hidden');
+}
+
+function updateChallengeDots() {
+  const dots = document.querySelectorAll('#challenge-pin-dots div');
+  dots.forEach((dot, i) => {
+    if (i < _challengePinValue.length) {
+      dot.className = 'w-5 h-5 rounded-full bg-blue-500 border-2 border-blue-500 transition-all duration-150 scale-110';
+    } else {
+      dot.className = 'w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150';
     }
-  }
+  });
+}
 
-  // Check if any staff exist
+function challengePinPress(digit) {
+  if (_challengePinValue.length >= 4) return;
+  _challengePinValue += digit;
+  updateChallengeDots();
+  document.getElementById('challenge-pin-error').textContent = '';
+
+  if (_challengePinValue.length === 4) {
+    attemptPinChallenge(_challengePinValue);
+  }
+}
+
+function challengePinClear() {
+  _challengePinValue = '';
+  updateChallengeDots();
+  document.getElementById('challenge-pin-error').textContent = '';
+  document.getElementById('challenge-pin-staff').innerHTML = '';
+}
+
+function challengePinBackspace() {
+  _challengePinValue = _challengePinValue.slice(0, -1);
+  updateChallengeDots();
+  document.getElementById('challenge-pin-error').textContent = '';
+}
+
+async function attemptPinChallenge(pin) {
+  try {
+    const result = await api('POST', '/api/staff/auth/pin', { pin });
+    if (result.error) {
+      showPinError('Invalid PIN');
+      return;
+    }
+
+    // Check permission
+    const hasPerm = result.role === 'owner' || result.role === 'tech_lead' || (result.permissions && result.permissions[_challengePermission]);
+    if (!hasPerm) {
+      showPinError('Access denied - insufficient permissions');
+      // Still show who it was
+      document.getElementById('challenge-pin-staff').innerHTML =
+        `<span class="text-slate-400 text-xs">${result.first_name} ${result.last_name} (${getRoleDisplayName(result.role)})</span>`;
+      return;
+    }
+
+    // Success
+    document.getElementById('pin-challenge-overlay').classList.add('hidden');
+    if (_challengeCallback) _challengeCallback(result);
+    _challengeCallback = null;
+    _challengePermission = null;
+  } catch (err) {
+    showPinError('Authentication failed');
+  }
+}
+
+function showPinError(msg) {
+  document.getElementById('challenge-pin-error').textContent = msg;
+  _challengePinValue = '';
+  updateChallengeDots();
+  // Shake
+  const dots = document.getElementById('challenge-pin-dots');
+  dots.classList.add('animate-shake');
+  setTimeout(() => dots.classList.remove('animate-shake'), 500);
+}
+
+function cancelPinChallenge() {
+  document.getElementById('pin-challenge-overlay').classList.add('hidden');
+  _challengeCallback = null;
+  _challengePermission = null;
+  _challengePinValue = '';
+}
+
+// ============================================================
+// First Run Setup (only if no staff exist)
+// ============================================================
+
+async function checkFirstRun() {
   try {
     const { count } = await api('GET', '/api/staff/count');
     if (count === 0) {
       showFirstRunSetup();
-    } else {
-      showPinLogin();
     }
   } catch (e) {
-    showPinLogin();
+    // Server may not be ready yet
   }
 }
 
 function showFirstRunSetup() {
-  const container = document.getElementById('login-container');
+  const overlay = document.getElementById('first-run-overlay');
+  overlay.classList.remove('hidden');
+  const container = document.getElementById('first-run-container');
   container.innerHTML = `
     <div class="text-center mb-8">
       <h1 class="text-3xl font-bold text-white tracking-tight">BoulderRyn</h1>
@@ -146,36 +239,29 @@ function showFirstRunSetup() {
     </div>
     <div class="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
       <h2 class="text-lg font-semibold text-white mb-1">Create First Staff Account</h2>
-      <p class="text-slate-400 text-sm mb-6">This will be the owner account with full access.</p>
+      <p class="text-slate-400 text-sm mb-6">This will be the owner account with full access. PIN defaults to your birthday (DDMM).</p>
       <form id="first-run-form" onsubmit="handleFirstRunSetup(event)">
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label class="block text-xs text-slate-400 mb-1">First Name</label>
-            <input type="text" name="first_name" value="Oscar" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            <input type="text" name="first_name" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
           </div>
           <div>
             <label class="block text-xs text-slate-400 mb-1">Last Name</label>
-            <input type="text" name="last_name" value="Sullivan" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            <input type="text" name="last_name" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
           </div>
         </div>
         <div class="mb-3">
           <label class="block text-xs text-slate-400 mb-1">Email</label>
-          <input type="email" name="email" value="oscar@sullivanltd.co.uk" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+          <input type="email" name="email" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
         </div>
         <div class="mb-3">
-          <label class="block text-xs text-slate-400 mb-1">4-Digit PIN</label>
-          <input type="text" name="pin" maxlength="4" pattern="[0-9]{4}" value="1234" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-center text-xl tracking-[0.5em] font-mono">
-        </div>
-        <div class="mb-4">
-          <label class="block text-xs text-slate-400 mb-1">Password (optional)</label>
-          <input type="password" name="password" class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+          <label class="block text-xs text-slate-400 mb-1">4-Digit PIN (e.g. birthday DDMM)</label>
+          <input type="text" name="pin" maxlength="4" pattern="[0-9]{4}" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-center text-xl tracking-[0.5em] font-mono" placeholder="DDMM">
         </div>
         <div id="first-run-error" class="text-red-400 text-sm mb-3 hidden"></div>
         <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Create Owner Account</button>
       </form>
-      <div class="mt-4 text-center">
-        <button onclick="handleSeedOwner()" class="text-slate-400 hover:text-white text-sm transition underline">Use default (Oscar Sullivan, PIN: 1234)</button>
-      </div>
     </div>
   `;
 }
@@ -190,240 +276,25 @@ async function handleFirstRunSetup(e) {
   try {
     const staff = await api('POST', '/api/staff', data);
     if (staff.error) throw new Error(staff.error);
-    window.currentStaff = staff;
-    localStorage.setItem('boulderryn_staff', JSON.stringify(staff));
-    onLoginSuccess();
+    document.getElementById('first-run-overlay').classList.add('hidden');
+    showToast(`Owner account created for ${data.first_name}. PIN: ${data.pin}`, 'success');
+    navigateTo('dashboard');
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
   }
 }
 
-async function handleSeedOwner() {
-  try {
-    const result = await api('POST', '/api/staff/seed-owner');
-    if (result.created) {
-      // Auto-login with PIN 1234
-      const staff = await api('POST', '/api/staff/auth/pin', { pin: '1234' });
-      if (staff && !staff.error) {
-        window.currentStaff = staff;
-        localStorage.setItem('boulderryn_staff', JSON.stringify(staff));
-        onLoginSuccess();
-      }
-    } else {
-      showPinLogin();
-    }
-  } catch (err) {
-    const errEl = document.getElementById('first-run-error');
-    if (errEl) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
-  }
-}
-
-let pinValue = '';
-
-function showPinLogin() {
-  pinValue = '';
-  const container = document.getElementById('login-container');
-  container.innerHTML = `
-    <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-white tracking-tight">BoulderRyn</h1>
-      <p class="text-slate-400 mt-2">Enter your PIN to continue</p>
-    </div>
-    <div class="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
-      <!-- PIN Dots -->
-      <div class="flex justify-center gap-4 mb-8" id="pin-dots">
-        <div class="w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150"></div>
-        <div class="w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150"></div>
-        <div class="w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150"></div>
-        <div class="w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150"></div>
-      </div>
-      <div id="pin-error" class="text-red-400 text-sm text-center mb-4 h-5"></div>
-      <!-- Number Pad -->
-      <div class="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
-        ${[1,2,3,4,5,6,7,8,9].map(n => `
-          <button onclick="pinPress('${n}')" class="h-16 rounded-xl bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-2xl font-semibold transition-all duration-100 select-none">${n}</button>
-        `).join('')}
-        <button onclick="pinClear()" class="h-16 rounded-xl bg-slate-700/50 hover:bg-slate-600 text-slate-300 text-sm font-medium transition select-none">Clear</button>
-        <button onclick="pinPress('0')" class="h-16 rounded-xl bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-2xl font-semibold transition-all duration-100 select-none">0</button>
-        <button onclick="pinBackspace()" class="h-16 rounded-xl bg-slate-700/50 hover:bg-slate-600 text-slate-300 transition select-none flex items-center justify-center">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414A2 2 0 0110.828 5H21a1 1 0 011 1v12a1 1 0 01-1 1H10.828a2 2 0 01-1.414-.586L3 12z"/></svg>
-        </button>
-      </div>
-      <div class="mt-6 text-center">
-        <button onclick="showEmailLogin()" class="text-slate-400 hover:text-white text-sm transition">Login with email instead</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('login-overlay').classList.remove('hidden');
-}
-
-function updatePinDots() {
-  const dots = document.querySelectorAll('#pin-dots div');
-  dots.forEach((dot, i) => {
-    if (i < pinValue.length) {
-      dot.className = 'w-5 h-5 rounded-full bg-blue-500 border-2 border-blue-500 transition-all duration-150 scale-110';
-    } else {
-      dot.className = 'w-5 h-5 rounded-full border-2 border-slate-500 transition-all duration-150';
-    }
-  });
-}
-
-function pinPress(digit) {
-  if (pinValue.length >= 4) return;
-  pinValue += digit;
-  updatePinDots();
-  document.getElementById('pin-error').textContent = '';
-
-  if (pinValue.length === 4) {
-    attemptPinLogin(pinValue);
-  }
-}
-
-function pinClear() {
-  pinValue = '';
-  updatePinDots();
-  document.getElementById('pin-error').textContent = '';
-}
-
-function pinBackspace() {
-  pinValue = pinValue.slice(0, -1);
-  updatePinDots();
-  document.getElementById('pin-error').textContent = '';
-}
-
-async function attemptPinLogin(pin) {
-  try {
-    const result = await api('POST', '/api/staff/auth/pin', { pin });
-    if (result.error) {
-      document.getElementById('pin-error').textContent = 'Invalid PIN';
-      pinValue = '';
-      updatePinDots();
-      // Shake animation
-      const dots = document.getElementById('pin-dots');
-      dots.classList.add('animate-shake');
-      setTimeout(() => dots.classList.remove('animate-shake'), 500);
-      return;
-    }
-    window.currentStaff = result;
-    localStorage.setItem('boulderryn_staff', JSON.stringify(result));
-    onLoginSuccess();
-  } catch (err) {
-    document.getElementById('pin-error').textContent = 'Login failed';
-    pinValue = '';
-    updatePinDots();
-  }
-}
-
-function showEmailLogin() {
-  const container = document.getElementById('login-container');
-  container.innerHTML = `
-    <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-white tracking-tight">BoulderRyn</h1>
-      <p class="text-slate-400 mt-2">Login with email</p>
-    </div>
-    <div class="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
-      <form id="email-login-form" onsubmit="handleEmailLogin(event)">
-        <div class="mb-4">
-          <label class="block text-xs text-slate-400 mb-1">Email</label>
-          <input type="email" name="email" required autofocus class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="you@example.com">
-        </div>
-        <div class="mb-4">
-          <label class="block text-xs text-slate-400 mb-1">Password</label>
-          <input type="password" name="password" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-        </div>
-        <div id="email-login-error" class="text-red-400 text-sm mb-3 hidden"></div>
-        <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Login</button>
-      </form>
-      <div class="mt-4 text-center">
-        <button onclick="showPinLogin()" class="text-slate-400 hover:text-white text-sm transition">Back to PIN login</button>
-      </div>
-    </div>
-  `;
-}
-
-async function handleEmailLogin(e) {
-  e.preventDefault();
-  const form = document.getElementById('email-login-form');
-  const data = Object.fromEntries(new FormData(form));
-  const errEl = document.getElementById('email-login-error');
-
-  try {
-    const result = await api('POST', '/api/staff/auth/password', data);
-    if (result.error) {
-      errEl.textContent = result.error;
-      errEl.classList.remove('hidden');
-      return;
-    }
-    window.currentStaff = result;
-    localStorage.setItem('boulderryn_staff', JSON.stringify(result));
-    onLoginSuccess();
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.classList.remove('hidden');
-  }
-}
-
-function onLoginSuccess() {
-  const overlay = document.getElementById('login-overlay');
-  overlay.classList.add('hidden');
-  updateStaffBadge();
-  enforcePermissions();
-  navigateTo('dashboard');
-}
-
-function lockScreen() {
-  window.currentStaff = null;
-  localStorage.removeItem('boulderryn_staff');
-  document.getElementById('staff-badge-container').classList.add('hidden');
-  showPinLogin();
-}
-
-function updateStaffBadge() {
-  const staff = window.currentStaff;
-  if (!staff) return;
-
-  const container = document.getElementById('staff-badge-container');
-  const initialsEl = document.getElementById('staff-badge-initials');
-  const nameEl = document.getElementById('staff-badge-name');
-  const roleEl = document.getElementById('staff-badge-role');
-
-  const initials = getInitials(staff.first_name, staff.last_name).toUpperCase();
-  initialsEl.textContent = initials;
-  initialsEl.className = `w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${ROLE_SIDEBAR_COLOURS[staff.role] || 'bg-slate-500'}`;
-  nameEl.textContent = `${staff.first_name} ${staff.last_name}`;
-
-  const badgeCls = ROLE_BADGE_CLASSES[staff.role] || 'bg-gray-100 text-gray-700';
-  roleEl.className = `text-xs px-1.5 py-0.5 rounded-full font-medium ${badgeCls}`;
-  roleEl.textContent = getRoleDisplayName(staff.role);
-
-  container.classList.remove('hidden');
-}
-
 // ============================================================
-// Permission Enforcement
+// Permission Check Helpers
 // ============================================================
 
-function staffHasPermission(perm) {
-  if (!window.currentStaff) return false;
-  const role = window.currentStaff.role;
+function staffHasPermission(staff, perm) {
+  if (!staff) return false;
+  const role = staff.role;
   if (role === 'owner' || role === 'tech_lead') return true;
-  const perms = window.currentStaff.permissions || {};
+  const perms = staff.permissions || {};
   return !!perms[perm];
-}
-
-function enforcePermissions() {
-  const navLinks = document.querySelectorAll('#nav-links .nav-link');
-  navLinks.forEach(link => {
-    const perm = link.dataset.perm;
-    if (!perm) return;
-    const li = link.closest('li');
-    if (staffHasPermission(perm)) {
-      li.classList.remove('hidden');
-      link.classList.remove('opacity-40', 'pointer-events-none');
-    } else {
-      li.classList.add('hidden');
-    }
-  });
 }
 
 // ============================================================
@@ -470,23 +341,25 @@ function renderMemberCard(m, options = {}) {
   `;
 }
 
-async function quickCheckIn(memberId) {
-  try {
-    const result = await api('POST', '/api/checkin/process', { memberId });
-    if (result.success) {
-      showToast(`${result.member.first_name} checked in`, 'success');
-      if (result.registrationWarning) {
-        showToast('REGISTRATION FEE NOT PAID — Add £3.00 to next transaction', 'error');
+function quickCheckIn(memberId) {
+  requirePin('checkin', async (staff) => {
+    try {
+      const result = await api('POST', '/api/checkin/process', { memberId, staffId: staff.id });
+      if (result.success) {
+        showToast(`${result.member.first_name} checked in (by ${staff.first_name})`, 'success');
+        if (result.registrationWarning) {
+          showToast('REGISTRATION FEE NOT PAID — Add £3.00 to next transaction', 'error');
+        }
+        if (document.getElementById('page-dashboard').classList.contains('active')) {
+          loadActiveVisitors();
+        }
+      } else {
+        showToast(result.error, 'error');
       }
-      if (document.getElementById('page-dashboard').classList.contains('active')) {
-        loadActiveVisitors();
-      }
-    } else {
-      showToast(result.error, 'error');
+    } catch (err) {
+      showToast('Check-in failed: ' + err.message, 'error');
     }
-  } catch (err) {
-    showToast('Check-in failed: ' + err.message, 'error');
-  }
+  }, 'Staff PIN', 'Check-in requires staff authorisation');
 }
 
 // ============================================================
@@ -496,14 +369,21 @@ async function quickCheckIn(memberId) {
 const pages = ['dashboard', 'checkin', 'members', 'pos', 'events', 'routes', 'analytics', 'staff'];
 
 function navigateTo(pageName) {
-  // Permission check
   const navLink = document.querySelector(`[data-page="${pageName}"]`);
-  const perm = navLink ? navLink.dataset.perm : null;
-  if (perm && !staffHasPermission(perm)) {
-    showAccessDenied(pageName);
+  const pinRequired = navLink ? navLink.dataset.pinRequired : null;
+
+  // Pages that require PIN to even VIEW (analytics, settings)
+  if (pinRequired) {
+    requirePin(pinRequired, (staff) => {
+      doNavigate(pageName);
+    }, 'Enter PIN', `${pageName === 'staff' ? 'Settings' : 'Analytics'} requires authorisation`);
     return;
   }
 
+  doNavigate(pageName);
+}
+
+function doNavigate(pageName) {
   pages.forEach(p => {
     const el = document.getElementById(`page-${p}`);
     if (el) el.classList.remove('active');
@@ -514,6 +394,7 @@ function navigateTo(pageName) {
   const pageEl = document.getElementById(`page-${pageName}`);
   if (pageEl) pageEl.classList.add('active');
 
+  const navLink = document.querySelector(`[data-page="${pageName}"]`);
   if (navLink) navLink.classList.add('active');
 
   // Remove padding and hide sidebar for POS page
@@ -532,28 +413,11 @@ function navigateTo(pageName) {
   loadPage(pageName);
 }
 
-function showAccessDenied(pageName) {
-  const pageEl = document.getElementById(`page-${pageName}`);
-  if (pageEl) {
-    pages.forEach(p => { const el = document.getElementById(`page-${p}`); if (el) el.classList.remove('active'); });
-    pageEl.classList.add('active');
-    pageEl.innerHTML = `
-      <div class="flex flex-col items-center justify-center py-24">
-        <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
-          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-        </div>
-        <h2 class="text-xl font-bold text-gray-900">Access Denied</h2>
-        <p class="text-gray-500 mt-2">You don't have permission to access this page.</p>
-        <button onclick="navigateTo('dashboard')" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Back to Visitors</button>
-      </div>
-    `;
-  }
-}
-
 document.querySelectorAll('.nav-link').forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    navigateTo(link.dataset.page);
+    const page = link.dataset.page;
+    navigateTo(page);
   });
 });
 
@@ -858,18 +722,57 @@ function hideCheckinDropdown() {
   if (dd) dd.style.display = 'none';
 }
 
+// Check-in is fully autonomous — no PIN needed. Second laptop with QR scanner.
+// Happy ding = success, sad ding = failure.
+
 async function checkinQrScan(qrCode) {
   const searchInput = document.getElementById('checkin-search');
-  const resultEl = document.getElementById('checkin-result');
   searchInput.value = '';
   clearTimeout(checkinResultClearTimer);
 
   try {
     const result = await api('GET', `/api/checkin/qr/${encodeURIComponent(qrCode)}`);
     showCheckinResultBig(result);
+    playCheckinSound(result.success);
   } catch (err) {
     showCheckinResultBig({ success: false, error: err.message, message: 'Check-in failed' });
+    playCheckinSound(false);
   }
+}
+
+// Audio feedback for check-in scanner
+function playCheckinSound(success) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (success) {
+      // Happy ding — two ascending tones
+      [0, 0.15].forEach((delay, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = i === 0 ? 880 : 1174.66; // A5 → D6
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.3);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.3);
+      });
+    } else {
+      // Sad buzz — low descending tone
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(150, ctx.currentTime + 0.4);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    }
+  } catch (e) { /* audio not available */ }
 }
 
 function showCheckinResultBig(result) {
@@ -1373,12 +1276,14 @@ async function addComment(memberId) {
   } catch (err) { showToast('Error: ' + err.message, 'error'); }
 }
 
-async function validateRegistration(memberId) {
-  try {
-    await api('POST', `/api/members/${memberId}/validate-registration`);
-    showToast('Registration validated', 'success');
-    await openMemberProfile(memberId);
-  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+function validateRegistration(memberId) {
+  requirePin('checkin', async (staff) => {
+    try {
+      await api('POST', `/api/members/${memberId}/validate-registration`);
+      showToast(`Registration validated (by ${staff.first_name})`, 'success');
+      await openMemberProfile(memberId);
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  }, 'Staff PIN', 'Validate registration (collect £3)');
 }
 
 function showMemberQrCode(memberId, memberName) {
@@ -1399,7 +1304,13 @@ function showMemberQrCode(memberId, memberName) {
   `);
 }
 
-async function editMemberModal(memberId) {
+function editMemberModal(memberId) {
+  requirePin('members_edit', (staff) => {
+    _doEditMemberModal(memberId);
+  }, 'Manager PIN', 'Editing profiles requires manager access');
+}
+
+async function _doEditMemberModal(memberId) {
   const m = await api('GET', `/api/members/${memberId}`);
   if (!m) return;
 
@@ -3547,4 +3458,6 @@ shakeStyle.textContent = `
 `;
 document.head.appendChild(shakeStyle);
 
-initAuth();
+// Init — no login required, check first run then load dashboard
+checkFirstRun();
+loadPage('dashboard');
