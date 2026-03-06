@@ -1036,7 +1036,13 @@ async function loadMembers() {
         <h2 class="text-2xl font-bold text-gray-900">Members</h2>
         <p class="text-gray-500 mt-1" id="member-count-text">Loading...</p>
       </div>
-      <button onclick="showNewMemberModal()" class="btn btn-primary">+ New Member</button>
+      <div class="flex gap-2">
+        <button onclick="exportMembersCSV()" class="btn btn-secondary flex items-center gap-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Export CSV
+        </button>
+        <button onclick="showNewMemberModal()" class="btn btn-primary">+ New Member</button>
+      </div>
     </div>
 
     <div class="card mb-4">
@@ -1070,6 +1076,57 @@ let memberSearchTimeout = null;
 function searchMembers(query) {
   clearTimeout(memberSearchTimeout);
   memberSearchTimeout = setTimeout(() => refreshMembersList(query), 200);
+}
+
+async function exportMembersCSV() {
+  try {
+    showToast('Generating CSV...', 'info');
+    // Fetch all members (large page)
+    const result = await api('GET', '/api/members/list?page=1&perPage=10000');
+    const members = result.members || [];
+    if (members.length === 0) { showToast('No members to export', 'error'); return; }
+
+    const headers = ['First Name','Last Name','Email','Phone','DOB','Gender','Address','City','County','Postcode','Registration Fee Paid','Waiver Status','Joined Date'];
+    const escapeCSV = (val) => {
+      if (val == null) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const rows = members.map(m => [
+      escapeCSV(m.first_name),
+      escapeCSV(m.last_name),
+      escapeCSV(m.email),
+      escapeCSV(m.phone),
+      escapeCSV(m.date_of_birth),
+      escapeCSV(m.gender),
+      escapeCSV(m.address_line1),
+      escapeCSV(m.city),
+      escapeCSV(m.region),
+      escapeCSV(m.postal_code),
+      m.registration_fee_paid ? 'Yes' : 'No',
+      '—',
+      m.created_at ? new Date(m.created_at).toLocaleDateString('en-GB') : ''
+    ].join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().split('T')[0];
+    a.href = url;
+    a.download = `boulderryn-members-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${members.length} members`, 'success');
+  } catch (err) {
+    showToast('Export failed: ' + err.message, 'error');
+  }
 }
 
 async function refreshMembersList(query = '', page = 1) {
@@ -1185,6 +1242,10 @@ async function openMemberProfile(memberId) {
             <button onclick="editMemberModal('${member.id}')" class="btn btn-secondary w-full btn-sm">Edit Profile</button>
             ${passes.some(p => p.category === 'membership' && p.status === 'active') ? `
               <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>
+              <button onclick="emailMemberQrCode('${member.id}')" class="btn btn-secondary w-full btn-sm flex items-center justify-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Email QR Code
+              </button>
             ` : ''}
           </div>
 
@@ -1418,6 +1479,20 @@ function showNewMemberModal() {
   `);
 }
 
+async function emailMemberQrCode(memberId) {
+  try {
+    showToast('Sending QR code email...', 'info');
+    const r = await api('POST', '/api/email/send-qr', { member_id: memberId });
+    if (r.success) {
+      showToast('QR code emailed successfully', 'success');
+    } else {
+      showToast('Email failed: ' + (r.error || 'Unknown error'), 'error');
+    }
+  } catch (e) {
+    showToast('Email failed: ' + e.message, 'error');
+  }
+}
+
 async function createMember(e) {
   e.preventDefault();
   const form = document.getElementById('new-member-form');
@@ -1429,6 +1504,8 @@ async function createMember(e) {
     showToast(`${member.first_name} ${member.last_name} registered`, 'success');
 
     if (member.email) {
+      // Send welcome email + QR code
+      api('POST', '/api/email/send-welcome', { member_id: member.id }).catch(() => {});
       api('POST', `/api/members/${member.id}/send-qr-email`).then(r => {
         if (r.success) showToast('QR code sent to ' + member.email, 'info');
       });
@@ -1769,6 +1846,11 @@ async function openEventDetail(eventId) {
     const priceStr = ev.price > 0 ? `£${parseFloat(ev.price).toFixed(2)}` : 'Free';
     const statusMap = { scheduled: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-700', completed: 'bg-gray-100 text-gray-600' };
     const enrolled = (ev.enrolments || []).filter(e => e.status === 'enrolled' || e.status === 'attended');
+    const capacityNum = ev.capacity || 0;
+    const enrolledCount = enrolled.length;
+    const isFull = capacityNum > 0 && enrolledCount >= capacityNum;
+    const capacityPct = capacityNum > 0 ? Math.min((enrolledCount / capacityNum) * 100, 100) : 0;
+    const capacityColor = capacityPct >= 90 ? 'bg-red-500' : capacityPct >= 70 ? 'bg-yellow-500' : 'bg-green-500';
 
     document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto';
     showModal(`
@@ -1791,7 +1873,9 @@ async function openEventDetail(eventId) {
           </div>
           <div class="bg-gray-50 rounded-lg p-3">
             <p class="text-xs text-gray-500 uppercase font-medium">Capacity</p>
-            <p class="text-sm font-medium text-gray-900 mt-0.5">${ev.capacity ? `${ev.current_enrolment || 0} / ${ev.capacity}` : 'Unlimited'}</p>
+            <p class="text-sm font-medium text-gray-900 mt-0.5">${ev.capacity ? `${enrolledCount} / ${ev.capacity} enrolled` : 'Unlimited'}</p>
+            ${ev.capacity ? `<div class="w-full h-2 bg-gray-200 rounded-full mt-2"><div class="h-full rounded-full ${capacityColor} transition-all" style="width:${capacityPct}%"></div></div>` : ''}
+            ${isFull ? '<p class="text-xs text-red-600 font-semibold mt-1">Event Full</p>' : ''}
           </div>
           <div class="bg-gray-50 rounded-lg p-3">
             <p class="text-xs text-gray-500 uppercase font-medium">Price</p>
@@ -1803,18 +1887,36 @@ async function openEventDetail(eventId) {
 
         <div class="border-t border-gray-200 pt-4 mb-4">
           <div class="flex items-center justify-between mb-3">
-            <h4 class="font-semibold text-gray-900">Enrolled Members (${enrolled.length})</h4>
-            ${ev.status === 'scheduled' ? `<button onclick="showAddMemberToEventModal('${ev.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition">+ Add Member</button>` : ''}
+            <h4 class="font-semibold text-gray-900">Enrolled Members (${enrolledCount})</h4>
+            ${ev.status === 'scheduled' && !isFull ? `<button onclick="showEventEnrolSearch('${ev.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition">+ Add Member</button>` : ''}
+            ${ev.status === 'scheduled' && isFull ? `<span class="px-3 py-1.5 bg-gray-200 text-gray-500 text-xs font-medium rounded-lg cursor-not-allowed">Event Full</span>` : ''}
+          </div>
+          <div id="event-enrol-search-container" class="hidden mb-3">
+            <div class="relative">
+              <input type="text" id="event-enrol-search-input" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm" placeholder="Search member by name or email..." oninput="searchMembersForEventInline(this.value, '${ev.id}')">
+              <button onclick="hideEventEnrolSearch()" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div id="event-enrol-search-results" class="mt-2 max-h-40 overflow-y-auto"></div>
           </div>
           ${enrolled.length === 0
             ? '<p class="text-gray-400 text-sm">No members enrolled yet</p>'
-            : `<div class="space-y-2 max-h-48 overflow-y-auto">${enrolled.map(en => `
+            : `<div class="space-y-2 max-h-60 overflow-y-auto">${enrolled.map(en => `
                 <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                   <div class="flex items-center gap-2">
                     <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background:${nameToColour(en.first_name + en.last_name)}">${getInitials(en.first_name, en.last_name).toUpperCase()}</div>
-                    <span class="text-sm font-medium">${en.first_name} ${en.last_name}</span>
+                    <div>
+                      <span class="text-sm font-medium">${en.first_name} ${en.last_name}</span>
+                      <span class="text-xs text-gray-400 ml-2">${en.email || ''}</span>
+                    </div>
                   </div>
-                  <span class="text-xs text-gray-400">${formatDate(en.enrolled_at)}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400">${formatDate(en.enrolled_at)}</span>
+                    ${ev.status === 'scheduled' ? `<button onclick="removeEnrolment('${ev.id}', '${en.member_id}')" class="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition" title="Remove">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>` : ''}
+                  </div>
                 </div>
               `).join('')}</div>`
           }
@@ -1829,6 +1931,65 @@ async function openEventDetail(eventId) {
     `);
   } catch (err) {
     showToast('Error loading event: ' + err.message, 'error');
+  }
+}
+
+function showEventEnrolSearch(eventId) {
+  const container = document.getElementById('event-enrol-search-container');
+  if (container) {
+    container.classList.remove('hidden');
+    const input = document.getElementById('event-enrol-search-input');
+    if (input) input.focus();
+  }
+}
+
+function hideEventEnrolSearch() {
+  const container = document.getElementById('event-enrol-search-container');
+  if (container) {
+    container.classList.add('hidden');
+    const input = document.getElementById('event-enrol-search-input');
+    if (input) input.value = '';
+    const results = document.getElementById('event-enrol-search-results');
+    if (results) results.innerHTML = '';
+  }
+}
+
+let eventEnrolSearchTimer = null;
+async function searchMembersForEventInline(query, eventId) {
+  clearTimeout(eventEnrolSearchTimer);
+  const results = document.getElementById('event-enrol-search-results');
+  if (query.length < 2) { results.innerHTML = ''; return; }
+  eventEnrolSearchTimer = setTimeout(async () => {
+    try {
+      const members = await api('GET', `/api/members/search?q=${encodeURIComponent(query)}&limit=10`);
+      results.innerHTML = members.map(m => `
+        <div onclick="enrolMemberInEventInline('${eventId}', '${m.id}')" class="flex items-center gap-2 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition">
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background:${nameToColour(m.first_name + m.last_name)}">${getInitials(m.first_name, m.last_name).toUpperCase()}</div>
+          <div class="flex-1 min-w-0"><p class="text-sm font-medium">${m.first_name} ${m.last_name}</p><p class="text-xs text-gray-400 truncate">${m.email || ''}</p></div>
+        </div>
+      `).join('') || '<p class="text-gray-400 text-sm p-2">No members found</p>';
+    } catch (err) { results.innerHTML = ''; }
+  }, 300);
+}
+
+async function enrolMemberInEventInline(eventId, memberId) {
+  try {
+    await api('POST', `/api/events/${eventId}/enroll`, { member_id: memberId });
+    showToast('Member enrolled', 'success');
+    openEventDetail(eventId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function removeEnrolment(eventId, memberId) {
+  if (!confirm('Remove this member from the event?')) return;
+  try {
+    await api('DELETE', `/api/events/${eventId}/enroll/${memberId}`);
+    showToast('Member removed', 'success');
+    openEventDetail(eventId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
   }
 }
 

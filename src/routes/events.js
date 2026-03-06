@@ -41,7 +41,38 @@ router.post('/auto-cancel', (req, res, next) => {
   try { res.json({ cancelled: Event.autoCancel() }); } catch (e) { next(e); }
 });
 
-// Enrolments
+// Enrolments — RESTful per-event routes
+router.get('/:id/enrollments', (req, res, next) => {
+  try {
+    const event = Event.getEventById(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.json(event.enrolments || []);
+  } catch (e) { next(e); }
+});
+
+router.post('/:id/enroll', (req, res, next) => {
+  try {
+    const { member_id } = req.body;
+    const result = Event.enrol(req.params.id, member_id);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/:id/enroll/:memberId', (req, res, next) => {
+  try {
+    const db = require('../main/database/db').getDb();
+    const enrolment = db.prepare(
+      "SELECT id FROM event_enrolments WHERE event_id = ? AND member_id = ? AND status IN ('enrolled','waitlisted')"
+    ).get(req.params.id, req.params.memberId);
+    if (!enrolment) return res.status(404).json({ error: 'Enrolment not found' });
+    Event.cancelEnrolment(enrolment.id);
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+// Enrolments (legacy)
 router.post('/enrol', (req, res, next) => {
   try {
     const { eventId, memberId, price, transactionId } = req.body;

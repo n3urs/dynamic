@@ -87,8 +87,14 @@ router.post('/register', (req, res, next) => {
       }
     }
 
-    // Send QR email in background (don't block response)
+    // Send welcome + QR emails in background (don't block response)
     if (member.email) {
+      try {
+        const emailService = require('../main/services/email');
+        emailService.sendWelcomeEmail(member).catch(err => {
+          console.error('Failed to send welcome email:', err.message);
+        });
+      } catch (e) { console.error('Email service error:', e.message); }
       Member.sendQrEmail(member.id).catch(err => {
         console.error('Failed to send QR email:', err.message);
       });

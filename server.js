@@ -30,6 +30,7 @@ app.use('/api/events', require('./src/routes/events'));
 app.use('/api/routes', require('./src/routes/routes'));
 app.use('/api/analytics', require('./src/routes/analytics'));
 app.use('/api/staff', require('./src/routes/staff'));
+app.use('/api/email', require('./src/routes/email'));
 app.use('/api/settings', require('./src/routes/settings'));
 app.use('/api/stats', require('./src/routes/stats'));
 app.use('/api', require('./src/routes/register'));
