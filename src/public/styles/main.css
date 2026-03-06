@@ -359,3 +359,21 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ============================================================
+   Check-In Scanner Animations
+   ============================================================ */
+@keyframes bounce-once {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.animate-bounce-once {
+  animation: bounce-once 0.4s ease-out;
+}
+@keyframes checkin-slide-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-checkin-success {
+  animation: checkin-slide-in 0.3s ease-out;
+}

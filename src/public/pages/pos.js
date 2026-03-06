@@ -7,6 +7,7 @@ let posCart = [];
 let posSelectedMember = null;
 let posSelectedCategory = null;
 let posClock = null;
+let posAutoCheckin = true; // default ON for day entry check-in toggle
 
 async function loadPOS() {
   const el = document.getElementById('page-pos');
@@ -249,11 +250,13 @@ async function posAddToCart(productId) {
   }
 
   posRenderCart();
+  if (posSelectedMember) posRenderMemberDisplay();
 }
 
 function posRemoveFromCart(index) {
   posCart.splice(index, 1);
   posRenderCart();
+  if (posSelectedMember) posRenderMemberDisplay();
 }
 
 function posUpdateQuantity(index, delta) {
@@ -346,23 +349,59 @@ async function posSearchAndLink(query) {
 
 function posSelectMember(member) {
   posSelectedMember = member;
+  posAutoCheckin = true;
+  posRenderMemberDisplay();
+}
+
+function posRenderMemberDisplay() {
+  const member = posSelectedMember;
+  if (!member) return;
   const displayEl = document.getElementById('pos-member-display');
   const initials = getInitials(member.first_name, member.last_name).toUpperCase();
   const colour = nameToColour(member.first_name + member.last_name);
   const regPaid = member.registration_fee_paid === 1;
+  const hasDayEntry = posCart.some(item => posIsDayEntryProduct(item.description));
 
   displayEl.innerHTML = `
-    <div class="flex items-center gap-3 bg-slate-700 rounded-lg px-3 py-2">
-      <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style="background:${colour}">${initials}</div>
-      <div class="flex-1 min-w-0">
-        <span class="font-bold text-sm text-white block truncate">${member.first_name} ${member.last_name}</span>
-        ${!regPaid ? '<span class="text-xs text-red-400">Reg fee not paid</span>' : ''}
+    <div class="bg-slate-700 rounded-lg px-3 py-2">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style="background:${colour}">${initials}</div>
+        <div class="flex-1 min-w-0">
+          <span class="font-bold text-sm text-white block truncate">${member.first_name} ${member.last_name}</span>
+          ${!regPaid ? '<span class="text-xs text-red-400">Reg fee not paid</span>' : ''}
+        </div>
+        <button onclick="posClearMember()" class="text-slate-400 hover:text-red-400 flex-shrink-0" title="Remove">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
-      <button onclick="posClearMember()" class="text-slate-400 hover:text-red-400 flex-shrink-0" title="Remove">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
+      ${hasDayEntry ? `
+        <label class="flex items-center gap-2 mt-2 cursor-pointer select-none">
+          <input type="checkbox" id="pos-auto-checkin-toggle" ${posAutoCheckin ? 'checked' : ''} onchange="posAutoCheckin = this.checked"
+            class="w-4 h-4 rounded border-slate-500 text-green-500 focus:ring-green-400 bg-slate-600">
+          <span class="text-xs text-green-400 font-medium">Check in ${member.first_name} now</span>
+        </label>
+      ` : ''}
     </div>
   `;
+}
+
+function posIsDayEntryProduct(productName) {
+  const dayEntryNames = ['adult peak', 'adult off peak', 'concession', 'u18', 'u16', '8-10 entry', 'falclimb', 'family entry'];
+  const lower = (productName || '').toLowerCase();
+  return dayEntryNames.some(n => lower.includes(n));
+}
+
+function posIsMembershipProduct(productName) {
+  const lower = (productName || '').toLowerCase();
+  return lower.includes('dd') && (lower.includes('peak') || lower.includes('off peak') || lower.includes('falclimb') || lower.includes('family') || lower.includes('concession'));
+}
+
+function posMapProductToPassType(productName) {
+  const lower = (productName || '').toLowerCase();
+  if (lower.includes('8-10')) return { match: '8-10 Single Entry', category: 'single_entry' };
+  if (lower.includes('u16') || lower.includes('under 16')) return { match: 'Under 16 Single Entry', category: 'single_entry' };
+  if (lower.includes('concession') || lower.includes('u18')) return { match: 'Concession/Student/U18 Single Entry', category: 'single_entry' };
+  return { match: 'Adult Single Entry', category: 'single_entry' };
 }
 
 function posClearMember() {
@@ -399,6 +438,7 @@ async function posPayMethod(method) {
       // Process with gift card
       const savedCart = [...posCart];
       const savedMember = posSelectedMember;
+      const savedAutoCheckin = posAutoCheckin;
       const txn = await api('POST', '/api/transactions', {
         member_id: posSelectedMember ? posSelectedMember.id : null,
         staff_id: window.currentStaff ? window.currentStaff.id : null,
@@ -408,9 +448,33 @@ async function posPayMethod(method) {
         items: posCart,
       });
       await api('POST', '/api/giftcards/redeem', { code, amount: total, transactionId: txn.id });
-      posShowReceipt(txn, savedCart, savedMember, 'voucher');
+
+      // Post-payment extras for voucher path
+      let passIssued = null, checkedIn = false, membershipPurchased = false;
+      if (savedMember) {
+        const dayEntryItems = savedCart.filter(item => posIsDayEntryProduct(item.description));
+        if (dayEntryItems.length > 0) {
+          try {
+            const passTypes = await api('GET', '/api/passes/types');
+            const mapping = posMapProductToPassType(dayEntryItems[0].description);
+            const passType = passTypes.find(pt => pt.name === mapping.match && pt.category === 'single_entry');
+            if (passType) {
+              const now = new Date(); const hour = now.getHours(); const day = now.getDay();
+              const isPeak = !(day >= 1 && day <= 5) || hour < 10 || hour >= 16;
+              passIssued = await api('POST', '/api/passes/issue', { memberId: savedMember.id, passTypeId: passType.id, isPeak, pricePaid: dayEntryItems[0].unit_price });
+            }
+            if (savedAutoCheckin) {
+              try { const ci = await api('POST', '/api/checkin/process', { memberId: savedMember.id, method: 'pos' }); if (ci.success) checkedIn = true; } catch(e) {}
+            }
+          } catch(e) {}
+        }
+        if (savedCart.some(item => posIsMembershipProduct(item.description))) membershipPurchased = true;
+      }
+
+      posShowReceipt(txn, savedCart, savedMember, 'voucher', { passIssued, checkedIn, membershipPurchased });
       posCart = [];
       posSelectedMember = null;
+      posAutoCheckin = true;
       return;
     } catch (err) {
       showToast('Voucher error: ' + err.message, 'error');
@@ -423,6 +487,7 @@ async function posPayMethod(method) {
     const paymentMethod = method === 'dojo_card' ? 'dojo_card' : method;
     const savedCart = [...posCart];
     const savedMember = posSelectedMember;
+    const savedAutoCheckin = posAutoCheckin;
     const txn = await api('POST', '/api/transactions', {
       member_id: posSelectedMember ? posSelectedMember.id : null,
       staff_id: window.currentStaff ? window.currentStaff.id : null,
@@ -438,9 +503,58 @@ async function posPayMethod(method) {
       }).catch(() => {});
     }
 
-    posShowReceipt(txn, savedCart, savedMember, paymentMethod);
+    // Post-payment: handle Day Entry and Membership products
+    let passIssued = null;
+    let checkedIn = false;
+    let membershipPurchased = false;
+
+    if (savedMember) {
+      // Day Entry: issue pass and optionally check in
+      const dayEntryItems = savedCart.filter(item => posIsDayEntryProduct(item.description));
+      if (dayEntryItems.length > 0) {
+        try {
+          // Find matching pass type
+          const passTypes = await api('GET', '/api/passes/types');
+          const firstDE = dayEntryItems[0];
+          const mapping = posMapProductToPassType(firstDE.description);
+          const passType = passTypes.find(pt => pt.name === mapping.match && pt.category === 'single_entry');
+
+          if (passType) {
+            const now = new Date();
+            const hour = now.getHours();
+            const day = now.getDay();
+            const isWeekday = day >= 1 && day <= 5;
+            const isPeak = !isWeekday || hour < 10 || hour >= 16;
+
+            passIssued = await api('POST', '/api/passes/issue', {
+              memberId: savedMember.id,
+              passTypeId: passType.id,
+              isPeak: isPeak,
+              pricePaid: firstDE.unit_price
+            });
+          }
+
+          // Auto check-in if toggle is on
+          if (savedAutoCheckin) {
+            try {
+              const ciResult = await api('POST', '/api/checkin/process', { memberId: savedMember.id, method: 'pos' });
+              if (ciResult.success) checkedIn = true;
+            } catch (e) { console.warn('Auto check-in failed:', e); }
+          }
+        } catch (e) { console.warn('Day entry pass issue failed:', e); }
+      }
+
+      // Membership: flag for QR code display
+      const membershipItems = savedCart.filter(item => posIsMembershipProduct(item.description));
+      if (membershipItems.length > 0) {
+        membershipPurchased = true;
+      }
+    }
+
+    posShowReceipt(txn, savedCart, savedMember, paymentMethod, { passIssued, checkedIn, membershipPurchased });
     posCart = [];
     posSelectedMember = null;
+    posAutoCheckin = true;
     await posLoadProducts(); // Refresh stock
   } catch (err) {
     showToast('Payment failed: ' + err.message, 'error');
@@ -449,16 +563,18 @@ async function posPayMethod(method) {
 
 function posCancelTx() {
   posCart = [];
+  posAutoCheckin = true;
   posClearMember();
   posRenderCart();
   showToast('Transaction cancelled', 'info');
 }
 
-function posShowReceipt(txn, items, member, paymentMethod) {
+function posShowReceipt(txn, items, member, paymentMethod, extras = {}) {
   const cartEl = document.getElementById('pos-cart-items');
   const now = new Date();
   const methodLabels = { dojo_card: 'Card (Dojo)', voucher: 'Voucher / Gift Card', gift_card: 'Voucher / Gift Card', other: 'Other' };
   const methodLabel = methodLabels[paymentMethod] || paymentMethod;
+  const { passIssued, checkedIn, membershipPurchased } = extras;
 
   cartEl.innerHTML = `
     <div class="text-center py-3">
@@ -477,6 +593,36 @@ function posShowReceipt(txn, items, member, paymentMethod) {
         </div>
       `).join('')}
     </div>
+
+    ${passIssued ? `
+      <div class="border-t border-slate-700 py-2">
+        <div class="flex items-center gap-2 text-green-400 text-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span>Pass issued: ${passIssued.pass_name || 'Day Entry'}</span>
+        </div>
+        ${checkedIn ? `
+          <div class="flex items-center gap-2 text-green-400 text-sm mt-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <span>Checked in</span>
+          </div>
+        ` : ''}
+      </div>
+    ` : ''}
+
+    ${membershipPurchased && member ? `
+      <div class="border-t border-slate-700 py-3">
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-2">Membership QR Code</p>
+        <div class="bg-white rounded-lg p-3 text-center">
+          <img src="/api/members/${member.id}/qr-code?size=200" alt="QR Code" class="mx-auto" style="width:150px;height:150px;">
+          <p class="text-gray-500 text-xs mt-1">${member.qr_code || ''}</p>
+        </div>
+        <div class="flex gap-2 mt-2">
+          <a href="/api/members/${member.id}/qr-code?size=400" download="boulderryn-qr.png" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold text-center transition">Download QR</a>
+          ${member.email ? `<button onclick="posSendQrEmail('${member.id}')" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">Email QR</button>` : ''}
+        </div>
+      </div>
+    ` : ''}
+
     <div class="border-t border-slate-600 py-2">
       <div class="flex justify-between text-sm font-bold">
         <span class="text-white">TOTAL</span>
@@ -495,9 +641,23 @@ function posShowReceipt(txn, items, member, paymentMethod) {
   document.getElementById('pos-cart-total').textContent = `£${txn.total_amount.toFixed(2)}`;
 }
 
+async function posSendQrEmail(memberId) {
+  try {
+    const result = await api('POST', `/api/members/${memberId}/send-qr-email`);
+    if (result.success) {
+      showToast('QR code emailed successfully', 'success');
+    } else {
+      showToast('Email failed: ' + (result.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showToast('Email failed: ' + err.message, 'error');
+  }
+}
+
 function posNewTx() {
   posCart = [];
   posSelectedMember = null;
+  posAutoCheckin = true;
   posClearMember();
   posRenderCart();
 }

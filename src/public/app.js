@@ -751,53 +751,181 @@ async function loadRecentForms() {
 }
 
 // ============================================================
-// Check-In
+// Check-In (Scanner-Ready)
 // ============================================================
 
 let checkinDebounceTimer = null;
+let checkinScanBuffer = '';
+let checkinScanTimeout = null;
+let checkinResultClearTimer = null;
 
 async function loadCheckIn() {
   const el = document.getElementById('page-checkin');
   el.innerHTML = `
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold text-gray-900">Check In</h2>
-      <p class="text-gray-500 mt-1">Scan QR code or search by name</p>
-    </div>
-
-    <div class="card mb-4">
-      <div class="flex gap-4">
-        <div class="flex-1" style="position: relative;">
-          <input type="text" id="checkin-search" class="form-input text-lg" placeholder="Scan QR code or type name/email..." autofocus autocomplete="off">
-          <div id="checkin-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:#fff; border:1px solid #e5e7eb; border-radius:0.5rem; box-shadow:0 4px 16px rgba(0,0,0,0.12); max-height:320px; overflow-y:auto; margin-top:4px;"></div>
-        </div>
-        <button onclick="processCheckInSearch()" class="btn btn-primary btn-lg">Search</button>
+    <div class="flex flex-col items-center pt-4 px-4" id="checkin-page-wrapper">
+      <!-- Header -->
+      <div class="text-center mb-4 w-full max-w-3xl">
+        <h2 class="text-3xl font-bold text-gray-900">Check In</h2>
+        <p class="text-gray-400 mt-1">Scan QR code or search by name</p>
       </div>
-    </div>
 
-    <div id="checkin-result"></div>
+      <!-- Big Scanner Input -->
+      <div class="w-full max-w-3xl relative mb-4">
+        <div class="relative">
+          <svg class="w-7 h-7 text-gray-400 absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+          <input type="text" id="checkin-search"
+            class="w-full pl-16 pr-6 py-5 text-2xl border-2 border-gray-300 rounded-2xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white shadow-lg placeholder-gray-300 font-medium"
+            placeholder="Scan QR code or search by name..."
+            autofocus autocomplete="off" spellcheck="false">
+        </div>
+        <!-- Search dropdown -->
+        <div id="checkin-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:#fff; border:1px solid #e5e7eb; border-radius:0.75rem; box-shadow:0 8px 30px rgba(0,0,0,0.15); max-height:350px; overflow-y:auto; margin-top:6px;"></div>
+      </div>
+
+      <!-- Result Area (big, visible from distance) -->
+      <div id="checkin-result" class="w-full max-w-3xl"></div>
+    </div>
   `;
 
   const searchInput = document.getElementById('checkin-search');
+
+  // QR Scanner detection: track input speed
+  // USB scanners type the full string very fast (<100ms) then hit Enter
+  let inputStartTime = 0;
+  let lastInputLen = 0;
+
   searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { hideCheckinDropdown(); processCheckInSearch(); }
-    if (e.key === 'Escape') hideCheckinDropdown();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      hideCheckinDropdown();
+      const val = searchInput.value.trim();
+      const elapsed = Date.now() - inputStartTime;
+      const isScannerInput = val.length >= 5 && elapsed < 200;
+
+      if (isScannerInput && val.startsWith('BR-')) {
+        // QR scanner detected — auto check-in via QR endpoint
+        checkinQrScan(val);
+      } else if (val.startsWith('BR-')) {
+        // Manual QR entry
+        checkinQrScan(val);
+      } else {
+        processCheckInSearch();
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideCheckinDropdown();
+      searchInput.value = '';
+      clearCheckinResult();
+    }
   });
+
   searchInput.addEventListener('input', () => {
+    const val = searchInput.value;
+    // Track timing for scanner detection
+    if (val.length === 1 || val.length < lastInputLen) {
+      inputStartTime = Date.now();
+    }
+    lastInputLen = val.length;
+
     clearTimeout(checkinDebounceTimer);
-    const q = searchInput.value.trim();
-    if (q.length < 2) { hideCheckinDropdown(); return; }
+    const q = val.trim();
+
+    // Don't show dropdown for scanner-speed input or QR codes
+    if (q.startsWith('BR-')) return;
+    if (q.length < 3) { hideCheckinDropdown(); return; }
+
     checkinDebounceTimer = setTimeout(() => checkinLiveSearch(q), 300);
   });
+
+  // Click outside to dismiss dropdown
   document.addEventListener('click', (e) => {
     const dropdown = document.getElementById('checkin-dropdown');
     if (dropdown && !dropdown.contains(e.target) && e.target.id !== 'checkin-search') hideCheckinDropdown();
   });
+
   searchInput.focus();
+}
+
+function clearCheckinResult() {
+  clearTimeout(checkinResultClearTimer);
+  const el = document.getElementById('checkin-result');
+  if (el) el.innerHTML = '';
 }
 
 function hideCheckinDropdown() {
   const dd = document.getElementById('checkin-dropdown');
   if (dd) dd.style.display = 'none';
+}
+
+async function checkinQrScan(qrCode) {
+  const searchInput = document.getElementById('checkin-search');
+  const resultEl = document.getElementById('checkin-result');
+  searchInput.value = '';
+  clearTimeout(checkinResultClearTimer);
+
+  try {
+    const result = await api('GET', `/api/checkin/qr/${encodeURIComponent(qrCode)}`);
+    showCheckinResultBig(result);
+  } catch (err) {
+    showCheckinResultBig({ success: false, error: err.message, message: 'Check-in failed' });
+  }
+}
+
+function showCheckinResultBig(result) {
+  const resultEl = document.getElementById('checkin-result');
+  const searchInput = document.getElementById('checkin-search');
+  clearTimeout(checkinResultClearTimer);
+
+  if (result.success) {
+    const m = result.member;
+    const regWarning = result.registrationWarning;
+    const passName = result.pass ? result.pass.pass_name : (m.active_pass ? m.active_pass.pass_name : '');
+
+    resultEl.innerHTML = `
+      <div class="rounded-3xl p-8 text-center animate-checkin-success" style="background: linear-gradient(135deg, #059669, #10B981); min-height: 300px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div class="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4 animate-bounce-once">
+          <svg class="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <p class="text-white text-5xl font-black tracking-tight mb-2">${m.first_name} ${m.last_name}</p>
+        <p class="text-white/80 text-2xl font-medium mb-3">${result.alreadyCheckedIn ? 'Already checked in today' : (result.message || 'Welcome back!')}</p>
+        ${passName ? `<span class="inline-block px-4 py-1.5 bg-white/20 rounded-full text-white text-lg font-medium">${passName}</span>` : ''}
+        ${regWarning ? `
+          <div class="mt-6 bg-red-600 rounded-xl p-4 max-w-md">
+            <p class="text-white font-bold text-xl">REGISTRATION FEE NOT PAID</p>
+            <p class="text-white/80 text-sm mt-1">Add £3.00 to next transaction</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Auto-clear after 5 seconds, refocus input
+    if (!regWarning) {
+      checkinResultClearTimer = setTimeout(() => {
+        resultEl.innerHTML = '';
+        if (searchInput) { searchInput.value = ''; searchInput.focus(); }
+      }, 5000);
+    }
+  } else {
+    const m = result.member;
+    const memberName = m ? `${m.first_name} ${m.last_name}` : 'Unknown Member';
+
+    resultEl.innerHTML = `
+      <div class="rounded-3xl p-8 text-center" style="background: linear-gradient(135deg, #DC2626, #EF4444); min-height: 300px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div class="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
+        </div>
+        <p class="text-white text-4xl font-black tracking-tight mb-2">${memberName}</p>
+        <p class="text-white/90 text-2xl font-medium">${result.error || result.message || 'Check-in failed'}</p>
+        ${result.needsWaiver ? '<p class="text-white/70 text-lg mt-3">Please complete a waiver first</p>' : ''}
+        ${result.needsPass ? '<p class="text-white/70 text-lg mt-3">No active pass — purchase at desk</p>' : ''}
+        <button onclick="clearCheckinResult(); document.getElementById(\'checkin-search\').focus();" class="mt-6 px-6 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-lg font-medium transition">Dismiss</button>
+      </div>
+    `;
+
+    // Refocus input so next scan works
+    if (searchInput) searchInput.focus();
+  }
 }
 
 async function checkinLiveSearch(query) {
@@ -808,7 +936,7 @@ async function checkinLiveSearch(query) {
     const results = await api('GET', `/api/members/search?q=${encodeURIComponent(query)}&limit=10`);
 
     if (results.length === 0) {
-      dropdown.innerHTML = `<div style="padding:12px 16px; color:#9ca3af; font-size:0.875rem;">No members found</div>`;
+      dropdown.innerHTML = `<div style="padding:14px 20px; color:#9ca3af; font-size:1rem;">No members found</div>`;
       dropdown.style.display = 'block';
       return;
     }
@@ -817,16 +945,16 @@ async function checkinLiveSearch(query) {
       const age = calculateAge(m.date_of_birth);
       const isUnder18 = age !== null && age < 18;
       return `
-        <div onclick="checkinDropdownSelect('${m.id}')" style="padding:10px 16px; cursor:pointer; border-bottom:1px solid #f3f4f6; display:flex; align-items:center; gap:8px;" onmouseenter="this.style.background='#eff6ff'" onmouseleave="this.style.background='#fff'">
-          <div style="width:32px;height:32px;border-radius:50%;background:${nameToColour(m.first_name+m.last_name)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:0.7rem;flex-shrink:0">
+        <div onclick="checkinDropdownSelect('${m.id}')" style="padding:12px 20px; cursor:pointer; border-bottom:1px solid #f3f4f6; display:flex; align-items:center; gap:10px;" onmouseenter="this.style.background='#eff6ff'" onmouseleave="this.style.background='#fff'">
+          <div style="width:40px;height:40px;border-radius:50%;background:${nameToColour(m.first_name+m.last_name)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:0.8rem;flex-shrink:0">
             ${getInitials(m.first_name, m.last_name).toUpperCase()}
           </div>
           <div style="flex:1;min-width:0">
-            <span style="font-weight:600; color:#111827;">${m.first_name} ${m.last_name}</span>
-            <span style="color:#9ca3af; font-size:0.8rem; margin-left:8px;">${m.email || ''}</span>
-            ${age !== null ? `<span style="color:${isUnder18 ? '#2563EB' : '#9ca3af'};font-size:0.75rem;margin-left:8px;${isUnder18 ? 'font-weight:700' : ''}">(${age})</span>` : ''}
+            <span style="font-weight:700; color:#111827; font-size:1.05rem;">${m.first_name} ${m.last_name}</span>
+            <span style="color:#9ca3af; font-size:0.85rem; margin-left:10px;">${m.email || ''}</span>
+            ${age !== null ? `<span style="color:${isUnder18 ? '#2563EB' : '#9ca3af'};font-size:0.8rem;margin-left:8px;${isUnder18 ? 'font-weight:700' : ''}">(${age})</span>` : ''}
           </div>
-          ${!m.registration_fee_paid ? '<span style="width:20px;height:20px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65rem;font-weight:700;flex-shrink:0">!</span>' : ''}
+          ${!m.registration_fee_paid ? '<span style="width:24px;height:24px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.7rem;font-weight:700;flex-shrink:0">!</span>' : ''}
         </div>
       `;
     }).join('');
@@ -850,22 +978,18 @@ async function processCheckInSearch() {
 
   try {
     if (query.startsWith('BR-')) {
-      const member = await api('GET', `/api/members/by-qr/${encodeURIComponent(query)}`);
-      if (member) {
-        await doCheckIn(member.id);
-        document.getElementById('checkin-search').value = '';
-        return;
-      }
+      await checkinQrScan(query);
+      return;
     }
 
     const results = await api('GET', `/api/members/search?q=${encodeURIComponent(query)}&limit=10`);
 
     if (results.length === 0) {
       resultEl.innerHTML = `
-        <div class="card checkin-result checkin-fail">
-          <p class="text-xl font-bold">No member found</p>
+        <div class="bg-white border border-gray-200 rounded-2xl p-8 text-center">
+          <p class="text-xl font-bold text-gray-900">No member found</p>
           <p class="text-gray-500 mt-2">Try a different search or register a new member</p>
-          <button onclick="showNewMemberModal()" class="btn btn-primary mt-4">Register New Member</button>
+          <button onclick="showNewMemberModal()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-medium">Register New Member</button>
         </div>
       `;
       return;
@@ -878,7 +1002,7 @@ async function processCheckInSearch() {
     }
 
     resultEl.innerHTML = `
-      <div class="card">
+      <div class="bg-white border border-gray-200 rounded-2xl p-6">
         <p class="text-sm text-gray-500 mb-3">${results.length} members found — select one:</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${results.map(m => renderMemberCard(m)).join('')}
@@ -886,51 +1010,16 @@ async function processCheckInSearch() {
       </div>
     `;
   } catch (err) {
-    resultEl.innerHTML = `<div class="card checkin-result checkin-fail"><p class="text-xl font-bold">Error</p><p class="text-gray-500 mt-2">${err.message}</p></div>`;
+    resultEl.innerHTML = `<div class="bg-white border border-red-200 rounded-2xl p-8 text-center"><p class="text-xl font-bold text-red-600">Error</p><p class="text-gray-500 mt-2">${err.message}</p></div>`;
   }
 }
 
 async function doCheckIn(memberId) {
-  const result = await api('POST', '/api/checkin/process', { memberId });
-  const resultEl = document.getElementById('checkin-result');
-
-  if (result.success) {
-    const m = result.member;
-    const regWarning = result.registrationWarning;
-
-    resultEl.innerHTML = `
-      <div class="card checkin-result checkin-success">
-        <svg class="w-16 h-16 mx-auto mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-        <p class="checkin-name">${m.first_name} ${m.last_name}</p>
-        <p class="text-gray-500">${result.alreadyCheckedIn ? 'Already checked in today' : result.message}</p>
-        ${m.active_pass ? `<span class="badge badge-success mt-2">${m.active_pass.pass_name}</span>` : ''}
-        ${regWarning ? `
-          <div class="mt-4 bg-red-50 border-2 border-red-400 rounded-xl p-4">
-            <p class="text-red-600 font-bold text-lg">REGISTRATION FEE NOT PAID</p>
-            <p class="text-red-500 text-sm mt-1">Add £3.00 to next transaction</p>
-            <button onclick="openPOSForMember('${m.id}', '${m.first_name} ${m.last_name}')" class="btn btn-danger mt-2">Go to POS</button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-
-    if (!regWarning) {
-      setTimeout(() => {
-        resultEl.innerHTML = '';
-        document.getElementById('checkin-search').value = '';
-        document.getElementById('checkin-search').focus();
-      }, 3000);
-    }
-  } else {
-    resultEl.innerHTML = `
-      <div class="card checkin-result checkin-fail">
-        <svg class="w-16 h-16 mx-auto mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-        <p class="checkin-name">${result.member ? result.member.first_name + ' ' + result.member.last_name : 'Unknown'}</p>
-        <p class="text-red-500 font-semibold">${result.error}</p>
-        ${result.needsWaiver ? '<button onclick="navigateTo(\'members\')" class="btn btn-primary mt-4">Complete Waiver</button>' : ''}
-        ${result.needsPass ? '<button onclick="navigateTo(\'pos\')" class="btn btn-primary mt-4">Purchase Pass</button>' : ''}
-      </div>
-    `;
+  try {
+    const result = await api('POST', '/api/checkin/process', { memberId });
+    showCheckinResultBig(result);
+  } catch (err) {
+    showCheckinResultBig({ success: false, error: err.message });
   }
 }
 
@@ -1094,6 +1183,9 @@ async function openMemberProfile(memberId) {
           <div class="mt-4 space-y-2">
             <button onclick="closeModal(); openPOSForMember('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-primary w-full btn-sm">Open in POS</button>
             <button onclick="editMemberModal('${member.id}')" class="btn btn-secondary w-full btn-sm">Edit Profile</button>
+            ${passes.some(p => p.category === 'membership' && p.status === 'active') ? `
+              <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>
+            ` : ''}
           </div>
 
           <div class="mt-4 border-t border-gray-200 pt-4">
@@ -1226,6 +1318,24 @@ async function validateRegistration(memberId) {
     showToast('Registration validated', 'success');
     await openMemberProfile(memberId);
   } catch (err) { showToast('Error: ' + err.message, 'error'); }
+}
+
+function showMemberQrCode(memberId, memberName) {
+  document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4';
+  showModal(`
+    <div class="p-6 text-center">
+      <h3 class="text-lg font-bold text-gray-900 mb-1">Membership QR Code</h3>
+      <p class="text-gray-500 text-sm mb-4">${memberName}</p>
+      <div class="bg-gray-50 rounded-xl p-4 mb-4">
+        <img src="/api/members/${memberId}/qr-code?size=300" alt="QR Code" class="mx-auto" style="width:200px;height:200px;">
+      </div>
+      <div class="flex gap-2">
+        <a href="/api/members/${memberId}/qr-code?size=400" download="boulderryn-qr.png" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition text-center">Download</a>
+        <button onclick="(async()=>{try{const r=await api('POST','/api/members/${memberId}/send-qr-email');showToast(r.success?'QR code emailed':'Email failed: '+(r.error||'Unknown'),'info');}catch(e){showToast('Email failed: '+e.message,'error');}})()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition">Email QR</button>
+      </div>
+      <button onclick="openMemberProfile('${memberId}')" class="mt-3 text-sm text-gray-400 hover:text-gray-600">Back to profile</button>
+    </div>
+  `);
 }
 
 async function editMemberModal(memberId) {

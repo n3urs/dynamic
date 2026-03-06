@@ -144,6 +144,26 @@ router.get('/:id/family', (req, res, next) => {
   try { res.json(Member.getFamily(req.params.id)); } catch (e) { next(e); }
 });
 
+// Generate QR code as PNG image
+router.get('/:id/qr-code', async (req, res, next) => {
+  try {
+    const QRCode = require('qrcode');
+    const member = Member.getById(req.params.id);
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+    if (!member.qr_code) return res.status(400).json({ error: 'No QR code assigned' });
+
+    const qrBuffer = await QRCode.toBuffer(member.qr_code, {
+      width: parseInt(req.query.size) || 400,
+      margin: 2,
+      color: { dark: '#1E3A5F', light: '#FFFFFF' }
+    });
+
+    res.set('Content-Type', 'image/png');
+    res.set('Content-Disposition', `inline; filename="boulderryn-qr-${member.first_name}-${member.last_name}.png"`);
+    res.send(qrBuffer);
+  } catch (e) { next(e); }
+});
+
 router.post('/:id/send-qr-email', async (req, res, next) => {
   try {
     await Member.sendQrEmail(req.params.id);
