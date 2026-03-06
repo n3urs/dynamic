@@ -309,42 +309,53 @@ function posRenderCart() {
 
 // Member search/link for POS
 function posLinkProfile() {
-  const name = prompt('Enter member name or QR code:');
-  if (!name) return;
-  posSearchAndLink(name);
+  showModal(`
+    <div class="max-w-md mx-auto">
+      <h3 class="text-lg font-bold text-gray-900 mb-4">Link Member Profile</h3>
+      <input type="text" id="pos-member-search" placeholder="Search by name or scan QR..." 
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+        oninput="posSearchMembers(this.value)" autofocus>
+      <div id="pos-member-results" class="mt-3 space-y-2 max-h-64 overflow-y-auto"></div>
+      <div class="mt-4 text-right">
+        <button onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('pos-member-search')?.focus(), 100);
 }
 
-async function posSearchAndLink(query) {
-  try {
-    if (query.startsWith('BR-')) {
-      const m = await api('GET', `/api/members/by-qr/${encodeURIComponent(query)}`);
-      if (m) { posSelectMember(m); return; }
-    }
-
-    const results = await api('GET', `/api/members/search?q=${encodeURIComponent(query)}&limit=5`);
-
-    if (results.length === 0) {
-      showToast('No member found', 'error');
-      return;
-    }
-
-    if (results.length === 1) {
-      posSelectMember(results[0]);
-      return;
-    }
-
-    // Multiple results — show selection in a simple dialog
-    const selected = results[0]; // For simplicity, take first match
-    // Actually, let's show a proper selection
-    const names = results.map((m, i) => `${i + 1}. ${m.first_name} ${m.last_name} (${m.email || 'no email'})`).join('\n');
-    const choice = prompt(`Multiple members found:\n${names}\n\nEnter number (1-${results.length}):`);
-    const idx = parseInt(choice) - 1;
-    if (idx >= 0 && idx < results.length) {
-      posSelectMember(results[idx]);
-    }
-  } catch (err) {
-    showToast('Search failed: ' + err.message, 'error');
+let posSearchTimeout = null;
+function posSearchMembers(query) {
+  clearTimeout(posSearchTimeout);
+  if (query.length < 2) {
+    document.getElementById('pos-member-results').innerHTML = '<p class="text-sm text-gray-400">Type at least 2 characters...</p>';
+    return;
   }
+  posSearchTimeout = setTimeout(async () => {
+    try {
+      // Check for QR code
+      if (query.startsWith('BR-')) {
+        const m = await api('GET', '/api/members/by-qr/' + encodeURIComponent(query));
+        if (m) { posSelectMember(m); closeModal(); return; }
+      }
+      const results = await api('GET', '/api/members/search?q=' + encodeURIComponent(query) + '&limit=8');
+      const container = document.getElementById('pos-member-results');
+      if (results.length === 0) {
+        container.innerHTML = '<p class="text-sm text-gray-400">No members found</p>';
+        return;
+      }
+      container.innerHTML = results.map(m => {
+        const initials = (m.first_name[0] + m.last_name[0]).toUpperCase();
+        const colour = nameToColour(m.first_name + m.last_name);
+        return `<div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition" onclick="posSelectMember(${JSON.stringify(m).replace(/"/g, '&quot;')}); closeModal();">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background:${colour}">${initials}</div>
+          <div><div class="font-medium text-gray-900">${m.first_name} ${m.last_name}</div><div class="text-xs text-gray-500">${m.email || ''}</div></div>
+        </div>`;
+      }).join('');
+    } catch (err) {
+      document.getElementById('pos-member-results').innerHTML = '<p class="text-sm text-red-500">Search error</p>';
+    }
+  }, 200);
 }
 
 function posSelectMember(member) {
