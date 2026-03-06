@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Boulder shape - irregular angular polygon -->
+  <polygon points="100,12 168,35 190,100 160,170 90,192 30,160 15,90 40,32" 
+    fill="#1E3A5F" stroke="white" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Inner facet lines for 3D effect -->
+  <line x1="100" y1="12" x2="105" y2="95" stroke="white" stroke-width="1" opacity="0.2"/>
+  <line x1="168" y1="35" x2="105" y2="95" stroke="white" stroke-width="1" opacity="0.2"/>
+  <line x1="40" y1="32" x2="105" y2="95" stroke="white" stroke-width="1" opacity="0.15"/>
+  <line x1="15" y1="90" x2="105" y2="95" stroke="white" stroke-width="1" opacity="0.15"/>
+  <!-- BOULDER text -->
+  <text x="100" y="92" text-anchor="middle" fill="white" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="24" letter-spacing="2">BOULDER</text>
+  <!-- RYN text (larger) -->
+  <text x="100" y="125" text-anchor="middle" fill="white" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="42" letter-spacing="3">RYN</text>
+</svg>

@@ -234,6 +234,7 @@ function showFirstRunSetup() {
   const container = document.getElementById('first-run-container');
   container.innerHTML = `
     <div class="text-center mb-8">
+      <img src="/logo.svg" alt="BoulderRyn" class="w-20 h-20 mx-auto mb-2">
       <h1 class="text-3xl font-bold text-white tracking-tight">BoulderRyn</h1>
       <p class="text-slate-400 mt-2">First Time Setup</p>
     </div>
