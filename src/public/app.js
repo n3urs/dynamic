@@ -1896,6 +1896,7 @@ async function loadRoutes() {
           </button>
         </div>
         <button onclick="showAddClimbModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">+ Add Climb</button>
+        <button onclick="confirmResetAllClimbs()" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium rounded-lg transition border border-red-200">Reset Gym</button>
       </div>
     </div>
 
@@ -2538,6 +2539,32 @@ async function stripClimbAction(climbId) {
     await api('POST', `/api/routes/climbs/${climbId}/strip`);
     closeModal();
     showToast('Climb stripped', 'success');
+    await renderRoutesPage();
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+}
+
+async function confirmResetAllClimbs() {
+  showModal(`
+    <div class="text-center">
+      <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+      </div>
+      <h3 class="text-xl font-bold text-gray-900 mb-2">Reset All Climbs?</h3>
+      <p class="text-gray-600 mb-2">This will strip ALL active climbs across every wall.</p>
+      <p class="text-gray-500 text-sm mb-6">Stripped climbs are kept in history but won't appear on the map or active list. Use this when the gym gets a full reset.</p>
+      <div class="flex justify-center gap-3">
+        <button onclick="closeModal()" class="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">Cancel</button>
+        <button onclick="executeResetAllClimbs()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Strip All Climbs</button>
+      </div>
+    </div>
+  `);
+}
+
+async function executeResetAllClimbs() {
+  try {
+    const res = await api('POST', '/api/routes/climbs/strip-all');
+    closeModal();
+    showToast('All climbs stripped — ' + (res.count || 0) + ' climbs reset', 'success');
     await renderRoutesPage();
   } catch (err) { showToast('Error: ' + err.message, 'error'); }
 }

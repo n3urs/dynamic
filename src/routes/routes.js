@@ -25,6 +25,14 @@ router.get('/climbs/:id', (req, res, next) => {
 router.put('/climbs/:id', (req, res, next) => {
   try { res.json(Route.updateClimb(req.params.id, req.body)); } catch (e) { next(e); }
 });
+router.post('/climbs/strip-all', (req, res, next) => {
+  try {
+    const db = require('../main/database/db.js').getDb();
+    const now = new Date().toISOString();
+    const result = db.prepare("UPDATE climbs SET status = 'stripped', date_stripped = ? WHERE status = 'active'").run(now);
+    res.json({ success: true, count: result.changes });
+  } catch (e) { next(e); }
+});
 router.post('/climbs/:id/strip', (req, res, next) => {
   try { res.json(Route.stripClimb(req.params.id)); } catch (e) { next(e); }
 });
