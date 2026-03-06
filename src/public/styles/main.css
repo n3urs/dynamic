@@ -4,7 +4,7 @@
 /* ============================================================
    Tailwind Base (CDN fallback — will be replaced with build)
    ============================================================ */
-@import url('https://cdn.jsdelivr.net/npm/tailwindcss@3.4/dist/tailwind.min.css');
+/* Tailwind loaded via CDN script tag in index.html */
 
 /* ============================================================
    Custom Properties — BoulderRyn Brand
