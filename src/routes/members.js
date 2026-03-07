@@ -1,7 +1,19 @@
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 const Member = require('../main/models/member');
 const { getDb } = require('../main/database/db');
+const multer = require('multer');
+
+const photoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, '../../data/photos')),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `${req.params.id}${ext}`);
+  }
+});
+const upload = multer({ storage: photoStorage, limits: { fileSize: 8 * 1024 * 1024 }, fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/')) });
 
 router.post('/', (req, res, next) => {
   try { res.json(Member.create(req.body)); } catch (e) { next(e); }
@@ -209,6 +221,36 @@ router.post('/:id/send-qr-email', async (req, res, next) => {
   } catch (e) {
     res.json({ success: false, error: e.message });
   }
+});
+
+// Photo upload
+router.post('/:id/photo', upload.single('photo'), (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const photoUrl = `/api/members/${req.params.id}/photo`;
+    getDb().prepare('UPDATE members SET photo_url = ?, updated_at = datetime("now") WHERE id = ?').run(photoUrl, req.params.id);
+    res.json({ success: true, photo_url: photoUrl });
+  } catch (e) { next(e); }
+});
+
+// Serve photo
+router.get('/:id/photo', (req, res, next) => {
+  try {
+    const dir = path.join(__dirname, '../../data/photos');
+    const files = fs.readdirSync(dir).filter(f => f.startsWith(req.params.id));
+    if (!files.length) return res.status(404).json({ error: 'No photo' });
+    res.sendFile(path.join(dir, files[0]));
+  } catch (e) { next(e); }
+});
+
+// Warning flag
+router.post('/:id/warning', (req, res, next) => {
+  try {
+    const { has_warning, warning_note } = req.body;
+    getDb().prepare('UPDATE members SET has_warning = ?, warning_note = ?, updated_at = datetime("now") WHERE id = ?')
+      .run(has_warning ? 1 : 0, warning_note || null, req.params.id);
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

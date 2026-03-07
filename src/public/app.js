@@ -1382,93 +1382,129 @@ async function openMemberProfile(memberId) {
     document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto';
 
     showModal(`
-      <div class="flex flex-col md:flex-row min-h-[500px]">
-        <div class="md:w-80 flex-shrink-0 bg-gray-50 p-6 border-r border-gray-200 rounded-l-xl">
-          <div class="flex justify-end mb-2">
-            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      <div class="flex flex-col md:flex-row min-h-[560px]">
+        <!-- Left Panel -->
+        <div class="md:w-72 flex-shrink-0 bg-white border-r border-gray-200 rounded-l-xl flex flex-col overflow-y-auto">
+
+          <!-- Photo + close -->
+          <div class="relative">
+            ${member.photo_url
+              ? `<img src="${member.photo_url}?t=${Date.now()}" class="w-full h-52 object-cover rounded-tl-xl" alt="${fullName}">`
+              : `<div class="w-full h-52 rounded-tl-xl flex items-center justify-center text-white font-bold text-5xl" style="background:${colour}">${initials}</div>`}
+            <button onclick="closeModal()" class="absolute top-2 right-2 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
+            <label class="absolute bottom-2 right-2 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white transition cursor-pointer" title="Upload photo">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              <input type="file" accept="image/*" class="hidden" onchange="uploadMemberPhoto('${member.id}', this)">
+            </label>
+            ${isUnder18 ? `<span class="absolute top-2 left-2 px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded-full">Under 18</span>` : ''}
+            ${member.has_warning ? `<span class="absolute top-2 left-2 px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center gap-1"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>Warning</span>` : ''}
           </div>
 
-          <div class="text-center mb-4">
-            <div class="w-20 h-20 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-3" style="background:${colour}">${initials}</div>
-            <h3 class="text-lg font-bold text-gray-900">${fullName}</h3>
-          </div>
-
-          <div class="flex items-center justify-center gap-2 mb-4">
-            ${regPaid
-              ? '<span class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></span><span class="text-sm text-green-600 font-medium">Registered</span>'
-              : `<span class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">!</span><span class="text-sm text-red-600 font-medium">Not Registered</span>
-                 <button onclick="validateRegistration('${member.id}')" class="btn btn-sm btn-danger ml-1">Validate</button>`}
-          </div>
-
-          <div class="space-y-3 text-sm">
-            ${member.date_of_birth ? `<div><span class="text-gray-400 text-xs uppercase">DOB</span><p class="font-medium">${formatDate(member.date_of_birth)} ${age !== null ? `<span class="${isUnder18 ? 'text-blue-600 font-bold' : 'text-gray-500'}">(${age})</span>` : ''}</p></div>` : ''}
-            ${member.gender ? `<div><span class="text-gray-400 text-xs uppercase">Gender</span><p class="font-medium capitalize">${member.gender.replace('_', ' ')}</p></div>` : ''}
-            ${member.email ? `<div><span class="text-gray-400 text-xs uppercase">Email</span><p class="font-medium text-blue-600">${member.email}</p></div>` : ''}
-            ${member.phone ? `<div><span class="text-gray-400 text-xs uppercase">Phone</span><p class="font-medium">${member.phone}</p></div>` : ''}
-            ${address ? `<div><span class="text-gray-400 text-xs uppercase">Address</span><p class="font-medium">${address}</p></div>` : ''}
-            ${member.emergency_contact_name ? `<div><span class="text-gray-400 text-xs uppercase">Emergency Contact</span><p class="font-medium">${member.emergency_contact_name} ${member.emergency_contact_phone ? '(' + member.emergency_contact_phone + ')' : ''}</p></div>` : ''}
-            ${member.medical_conditions ? `<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2"><span class="text-yellow-800 text-xs uppercase font-bold">Medical</span><p class="text-yellow-700 text-sm">${member.medical_conditions}</p></div>` : ''}
-            <div class="flex items-center gap-3 flex-wrap pt-1">
-              ${member.waiver_valid ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Waiver</span>` : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium">No waiver</span>`}
-              ${member.registration_fee_paid ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Reg fee</span>` : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-xs font-medium">£3 reg fee due</span>`}
-              ${member.has_app ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>Has app</span>` : ''}
+          <!-- Name + info -->
+          <div class="p-4 flex-1">
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <h3 class="text-lg font-bold text-gray-900 leading-tight">${fullName}</h3>
+              ${member.has_app ? `<span class="flex items-center gap-1 text-xs text-indigo-600 font-medium flex-shrink-0 mt-0.5"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>Has App</span>` : ''}
             </div>
-          </div>
 
-          <div class="mt-4 space-y-2">
-            ${member.has_valid_pass ? `
-              <button onclick="quickCheckInFromProfile('${member.id}', '${fullName.replace(/'/g, "\\'")}')"
-                class="w-full py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition text-sm flex items-center justify-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-                Check In${member.active_pass?.visits_remaining != null ? ` (${member.active_pass.visits_remaining} left)` : ''}
+            <div class="space-y-1.5 text-sm mb-4">
+              ${member.date_of_birth ? `<div class="flex items-center gap-2 text-gray-700"><svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><span>${formatDate(member.date_of_birth)}${age !== null ? ` <span class="${isUnder18 ? 'text-blue-600 font-bold' : 'text-gray-500'}">${age}</span>` : ''}</span></div>` : ''}
+              ${member.gender ? `<div class="flex items-center gap-2 text-gray-700"><svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg><span class="capitalize">${member.gender.replace(/_/g, ' ')}</span></div>` : ''}
+              ${member.email ? `<div class="flex items-center gap-2"><svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><span class="text-blue-600 truncate">${member.email}</span></div>` : ''}
+              ${member.phone ? `<div class="flex items-center gap-2 text-gray-700"><svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg><span>${member.phone}</span></div>` : ''}
+              ${address ? `<div class="flex items-start gap-2 text-gray-700"><svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span class="text-xs leading-relaxed">${address}</span></div>` : ''}
+              ${member.emergency_contact_name ? `<div class="flex items-center gap-2 text-gray-700 mt-1 pt-1 border-t border-gray-100"><svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg><span class="text-xs">${member.emergency_contact_name}${member.emergency_contact_phone ? ' · ' + member.emergency_contact_phone : ''}</span></div>` : ''}
+              ${member.medical_conditions ? `<div class="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded-lg"><p class="text-xs text-yellow-800 font-semibold">Medical</p><p class="text-xs text-yellow-700 mt-0.5">${member.medical_conditions}</p></div>` : ''}
+            </div>
+
+            <!-- Warning + Edit row -->
+            <div class="flex items-center gap-2 mb-4">
+              <button onclick="toggleMemberWarning('${member.id}', ${!member.has_warning})"
+                class="${member.has_warning ? 'bg-red-500 hover:bg-red-600 text-white' : 'border border-orange-300 text-orange-600 hover:bg-orange-50'} flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                ${member.has_warning ? 'Warning' : 'Flag'}
               </button>
-            ` : ''}
-            <button onclick="openPOSForMemberWithPin('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-primary w-full btn-sm">Open in POS</button>
-            <button onclick="assignPassModal('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">Assign Pass</button>
-            <button onclick="editMemberModal('${member.id}')" class="btn btn-secondary w-full btn-sm">Edit Profile</button>
-            ${passes.some(p => p.category === 'membership' && p.status === 'active') ? `
-              <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>
-              <button onclick="emailMemberQrCode('${member.id}')" class="btn btn-secondary w-full btn-sm flex items-center justify-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                Email QR Code
+              <button onclick="editMemberModal('${member.id}')" class="text-xs text-gray-500 hover:text-gray-700 underline">Edit profile</button>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="space-y-2">
+              ${member.has_valid_pass ? `
+                <button onclick="quickCheckInFromProfile('${member.id}', '${fullName.replace(/'/g, "\\'")}')"
+                  class="w-full py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition text-sm flex items-center justify-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                  Check In${member.active_pass?.visits_remaining != null ? ` (${member.active_pass.visits_remaining} left)` : ''}
+                </button>` : ''}
+              <button onclick="openPOSForMemberWithPin('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-primary w-full btn-sm">Open in POS</button>
+              <button onclick="assignPassModal('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">Assign Pass</button>
+              ${passes.some(p => p.status === 'active') ? `
+                <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>` : ''}
+            </div>
+
+            <!-- Collapsible: Comments -->
+            <div class="mt-4 border-t border-gray-100 pt-3">
+              <button onclick="toggleProfileSection('comments-section')" class="w-full flex items-center justify-between py-1 group">
+                <span class="text-xs font-bold text-gray-500 uppercase">Comments ${comments.length > 0 ? `<span class="ml-1 px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-xs">${comments.length}</span>` : ''}</span>
+                <svg id="comments-section-chevron" class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
-            ` : ''}
-          </div>
-
-          <div class="mt-4 border-t border-gray-200 pt-4">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs uppercase font-bold text-gray-400">Comments (${comments.length})</span>
-              <button onclick="toggleCommentForm()" class="text-blue-600 text-xs font-medium hover:underline">+ Add</button>
-            </div>
-            <div id="comment-form-container" class="hidden mb-3">
-              <input type="text" id="comment-staff-name" class="form-input text-xs mb-1" placeholder="Your name" value="${window.currentStaff ? window.currentStaff.first_name : 'Staff'}">
-              <textarea id="comment-text" class="form-input text-xs" rows="2" placeholder="Add a comment..."></textarea>
-              <button onclick="addComment('${member.id}')" class="btn btn-sm btn-primary mt-1 w-full">Post Comment</button>
-            </div>
-            <div id="comments-list" class="space-y-2 max-h-40 overflow-y-auto">
-              ${comments.length === 0 ? '<p class="text-xs text-gray-400">No comments yet</p>' :
-                comments.map(c => `
-                  <div class="bg-white rounded-lg p-2 border border-gray-100">
-                    <div class="flex items-center gap-1 mb-0.5">
-                      <span class="text-xs font-bold text-gray-700">${c.staff_name}</span>
-                      <span class="text-xs text-gray-300">${formatDate(c.created_at)}</span>
-                    </div>
-                    <p class="text-xs text-gray-600">${c.comment}</p>
-                  </div>
-                `).join('')}
-            </div>
-          </div>
-
-          ${member.tags && member.tags.length > 0 ? `
-            <div class="mt-4 border-t border-gray-200 pt-4">
-              <span class="text-xs uppercase font-bold text-gray-400">Tags</span>
-              <div class="flex flex-wrap gap-1 mt-2">
-                ${member.tags.map(t => `<span class="px-2 py-0.5 rounded-full text-xs font-medium text-white" style="background:${t.colour || '#3B82F6'}">${t.name}</span>`).join('')}
+              <div id="comments-section" class="hidden mt-2">
+                <div id="comment-form-container" class="hidden mb-3">
+                  <textarea id="comment-text" class="form-input text-xs w-full" rows="2" placeholder="Add a comment..."></textarea>
+                  <button onclick="addComment('${member.id}')" class="btn btn-sm btn-primary mt-1 w-full">Post</button>
+                </div>
+                <button onclick="toggleCommentForm()" class="text-xs text-blue-600 hover:underline mb-2">+ Add comment</button>
+                <div class="space-y-2 max-h-36 overflow-y-auto">
+                  ${comments.length === 0 ? '<p class="text-xs text-gray-400">No comments yet</p>' : comments.map(c => `
+                    <div class="bg-gray-50 rounded-lg p-2">
+                      <div class="flex items-center gap-1 mb-0.5">
+                        <span class="text-xs font-bold text-gray-700">${c.staff_name}</span>
+                        <span class="text-xs text-gray-300">${formatDate(c.created_at)}</span>
+                      </div>
+                      <p class="text-xs text-gray-600">${c.comment}</p>
+                    </div>`).join('')}
+                </div>
               </div>
             </div>
-          ` : ''}
+
+            <!-- Collapsible: Forms -->
+            <div class="border-t border-gray-100 pt-3">
+              <button onclick="toggleProfileSection('forms-section')" class="w-full flex items-center justify-between py-1">
+                <span class="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                  Forms
+                  ${member.latest_waiver ? `<span class="px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">${member.waiver_valid ? 'Valid' : 'Expired'}</span>` : ''}
+                </span>
+                <svg id="forms-section-chevron" class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="forms-section" class="hidden mt-2 space-y-2">
+                ${member.latest_waiver ? `
+                  <div class="bg-gray-50 rounded-lg p-2.5">
+                    <div class="flex items-start justify-between">
+                      <div>
+                        <p class="text-xs font-semibold text-gray-800">Waiver signed</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${formatDateTime ? formatDateTime(member.latest_waiver.signed_at) : formatDate(member.latest_waiver.signed_at)}</p>
+                        ${member.latest_waiver.expires_at ? `<p class="text-xs text-gray-400">Expires ${formatDate(member.latest_waiver.expires_at)}</p>` : ''}
+                      </div>
+                      ${!regPaid ? `<button onclick="validateRegistration('${member.id}')" class="text-xs px-2 py-1 bg-orange-500 text-white rounded-lg font-semibold">Collect £3</button>` : ''}
+                    </div>
+                  </div>` : `<p class="text-xs text-gray-400">No waiver on file</p>`}
+              </div>
+            </div>
+
+            <!-- Collapsible: Tags -->
+            ${member.tags && member.tags.length > 0 ? `
+            <div class="border-t border-gray-100 pt-3">
+              <button onclick="toggleProfileSection('tags-section')" class="w-full flex items-center justify-between py-1">
+                <span class="text-xs font-bold text-gray-500 uppercase">Tags <span class="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-xs">${member.tags.length}</span></span>
+                <svg id="tags-section-chevron" class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="tags-section" class="hidden mt-2 flex flex-wrap gap-1">
+                ${member.tags.map(t => `<span class="px-2 py-0.5 rounded-full text-xs font-medium text-white" style="background:${t.colour || '#3B82F6'}">${t.name}</span>`).join('')}
+              </div>
+            </div>` : ''}
+
+          </div>
         </div>
 
         <div class="flex-1 flex flex-col min-w-0">
@@ -1659,19 +1695,26 @@ function renderEventsTab(events) {
     Book Event
   </button>` : '';
 
+  const filterPills = `
+    <div class="flex gap-1.5 flex-wrap mb-3">
+      ${['all','enrolled','attended','no_show','cancelled'].map((f, i) => {
+        const labels = { all: 'All', enrolled: 'Upcoming', attended: 'Attended', no_show: 'Missed', cancelled: 'Cancelled' };
+        return `<button onclick="filterEventsTab('${f}')" data-events-filter="${f}" class="events-filter-pill px-2.5 py-1 rounded-full text-xs font-medium border transition ${i === 0 ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]' : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}">${labels[f]}</button>`;
+      }).join('')}
+    </div>`;
+
   if (!events || events.length === 0) {
-    return `<div class="text-center py-8">
-      <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+    return `${filterPills}<div class="text-center py-6">
       <p class="text-gray-400 text-sm mb-3">No events booked</p>
       ${enrolBtn}
     </div>`;
   }
 
   return `
-    <div class="flex items-center justify-between mb-3">
-      <p class="text-xs text-gray-400">${events.length} booking${events.length !== 1 ? 's' : ''}</p>
-      ${enrolBtn}
+    <div class="flex items-center justify-between mb-1">
+      <span></span>${enrolBtn}
     </div>
+    ${filterPills}
     <div class="space-y-2">
       ${events.map(e => {
         const dt = e.starts_at ? new Date(e.starts_at) : null;
@@ -1679,7 +1722,7 @@ function renderEventsTab(events) {
         const isPast = dt && dt < new Date();
         const sc = statusColour[e.status] || 'bg-gray-100 text-gray-600';
         const canCancel = ['enrolled', 'waitlisted'].includes(e.status);
-        return `<div class="flex items-center justify-between p-3 rounded-xl border border-gray-100 ${isPast ? 'opacity-70' : ''}">
+        return `<div data-event-card="${e.status}" class="flex items-center justify-between p-3 rounded-xl border border-gray-100 ${isPast ? 'opacity-70' : ''}">
           <div class="min-w-0">
             <p class="text-sm font-semibold text-gray-800 truncate">${e.event_name}</p>
             <p class="text-xs text-gray-400 mt-0.5">${dateStr}</p>
@@ -1691,6 +1734,18 @@ function renderEventsTab(events) {
         </div>`;
       }).join('')}
     </div>`;
+}
+
+function filterEventsTab(filter) {
+  document.querySelectorAll('.events-filter-pill').forEach(p => {
+    const active = p.dataset.eventsFilter === filter;
+    p.className = p.className.replace(/bg-\[#1E3A5F\] text-white border-\[#1E3A5F\]|bg-white text-gray-500 border-gray-300 hover:border-gray-400/g, '');
+    p.className += active ? ' bg-[#1E3A5F] text-white border-[#1E3A5F]' : ' bg-white text-gray-500 border-gray-300 hover:border-gray-400';
+  });
+  document.querySelectorAll('[data-event-card]').forEach(card => {
+    const status = card.dataset.eventCard;
+    card.style.display = (filter === 'all' || filter === status) ? '' : 'none';
+  });
 }
 
 async function enrolMemberInEvent(memberId) {
@@ -1791,8 +1846,41 @@ function renderTransactionsTab(transactions) {
     </div>`;
 }
 
+function toggleProfileSection(id) {
+  const section = document.getElementById(id);
+  const chevron = document.getElementById(id + '-chevron');
+  if (!section) return;
+  section.classList.toggle('hidden');
+  if (chevron) chevron.style.transform = section.classList.contains('hidden') ? '' : 'rotate(180deg)';
+}
+
 function toggleCommentForm() {
   document.getElementById('comment-form-container').classList.toggle('hidden');
+}
+
+async function uploadMemberPhoto(memberId, input) {
+  if (!input.files[0]) return;
+  const form = new FormData();
+  form.append('photo', input.files[0]);
+  try {
+    showToast('Uploading photo...', 'info');
+    const res = await fetch(`/api/members/${memberId}/photo`, { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.success) { showToast('Photo updated', 'success'); openMemberProfile(memberId); }
+    else showToast('Upload failed: ' + data.error, 'error');
+  } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
+}
+
+async function toggleMemberWarning(memberId, enable) {
+  let note = null;
+  if (enable) {
+    note = prompt('Warning note (optional — will show to all staff):') ?? '';
+  }
+  try {
+    await api('POST', `/api/members/${memberId}/warning`, { has_warning: enable, warning_note: note });
+    showToast(enable ? 'Warning flag set' : 'Warning removed', 'success');
+    openMemberProfile(memberId);
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function addComment(memberId) {
