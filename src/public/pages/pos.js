@@ -234,25 +234,35 @@ async function _doAddToCart(productId) {
     return;
   }
 
-  // Check if Day Entry product and no member linked
-  if (product.category_name === 'Day Entry' && !posSelectedMember) {
-    showToast('Link a member first for Day Entry', 'error');
-    posLinkProfile();
-    return;
-  }
+  const isDayEntry = posIsDayEntryProduct(product.name);
 
-  const existing = posCart.find(item => item.product_id === productId);
-  if (existing) {
-    existing.quantity++;
-    existing.total_price = existing.quantity * existing.unit_price;
-  } else {
+  // Day entry items are never merged — each one is a separate line with its own member assignment
+  if (isDayEntry) {
     posCart.push({
       product_id: productId,
       description: product.name,
       unit_price: product.price,
       quantity: 1,
       total_price: product.price,
+      is_day_entry: true,
+      assigned_member: posSelectedMember ? { ...posSelectedMember } : null,
     });
+  } else {
+    const existing = posCart.find(item => item.product_id === productId && !item.is_day_entry);
+    if (existing) {
+      existing.quantity++;
+      existing.total_price = existing.quantity * existing.unit_price;
+    } else {
+      posCart.push({
+        product_id: productId,
+        description: product.name,
+        unit_price: product.price,
+        quantity: 1,
+        total_price: product.price,
+        is_day_entry: false,
+        assigned_member: null,
+      });
+    }
   }
 
   posRenderCart();
@@ -301,23 +311,39 @@ function posRenderCart() {
 
   const total = posCart.reduce((sum, item) => sum + item.total_price, 0);
 
-  itemsEl.innerHTML = posCart.map((item, i) => `
-    <div class="flex items-center justify-between py-2 border-b border-slate-700/50">
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-white truncate">${item.description}</p>
-        <p class="text-xs text-slate-400">£${item.unit_price.toFixed(2)} each</p>
+  itemsEl.innerHTML = posCart.map((item, i) => {
+    const memberChip = item.is_day_entry ? (() => {
+      const m = item.assigned_member;
+      const label = m ? `${m.first_name} ${m.last_name}` : 'Tap to assign';
+      const chipClass = m
+        ? 'bg-blue-700 text-blue-100 hover:bg-blue-600'
+        : 'bg-slate-600 text-slate-300 hover:bg-slate-500 border border-dashed border-slate-500';
+      return `<button onclick="posAssignMemberToItem(${i})" class="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition mt-0.5 max-w-[140px] ${chipClass}">
+        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        <span class="truncate">${label}</span>
+      </button>`;
+    })() : '';
+    return `
+    <div class="py-2 border-b border-slate-700/50">
+      <div class="flex items-center justify-between">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-white truncate">${item.description}</p>
+          ${item.is_day_entry ? memberChip : `<p class="text-xs text-slate-400">£${item.unit_price.toFixed(2)} each</p>`}
+        </div>
+        <div class="flex items-center gap-1.5 ml-2">
+          ${!item.is_day_entry ? `
+            <button onclick="posUpdateQuantity(${i}, -1)" class="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-xs font-bold flex items-center justify-center">−</button>
+            <span class="text-sm font-bold w-5 text-center">${item.quantity}</span>
+            <button onclick="posUpdateQuantity(${i}, 1)" class="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-xs font-bold flex items-center justify-center">+</button>
+          ` : ''}
+          <span class="text-sm font-bold w-14 text-right">£${item.total_price.toFixed(2)}</span>
+          <button onclick="posRemoveFromCart(${i})" class="text-slate-500 hover:text-red-400 ml-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="flex items-center gap-1.5 ml-2">
-        <button onclick="posUpdateQuantity(${i}, -1)" class="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-xs font-bold flex items-center justify-center">−</button>
-        <span class="text-sm font-bold w-5 text-center">${item.quantity}</span>
-        <button onclick="posUpdateQuantity(${i}, 1)" class="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-xs font-bold flex items-center justify-center">+</button>
-        <span class="text-sm font-bold w-14 text-right">£${item.total_price.toFixed(2)}</span>
-        <button onclick="posRemoveFromCart(${i})" class="text-slate-500 hover:text-red-400 ml-1">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   subtotalEl.textContent = `£${total.toFixed(2)}`;
   totalEl.textContent = `£${total.toFixed(2)}`;
@@ -377,7 +403,68 @@ function posSearchMembers(query) {
 function posSelectMember(member) {
   posSelectedMember = member;
   posAutoCheckin = true;
+  // Update any unassigned day entry items to this member
+  posCart.forEach(item => {
+    if (item.is_day_entry && !item.assigned_member) {
+      item.assigned_member = { ...member };
+    }
+  });
+  posRenderCart();
   posRenderMemberDisplay();
+}
+
+function posAssignMemberToItem(itemIndex) {
+  const item = posCart[itemIndex];
+  if (!item) return;
+  showModal(`
+    <div class="max-w-md mx-auto">
+      <h3 class="text-lg font-bold text-gray-900 mb-1">Assign to Member</h3>
+      <p class="text-sm text-gray-500 mb-4">${item.description}</p>
+      <input type="text" id="pos-assign-search" placeholder="Search by name or scan QR..."
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+        oninput="posSearchForAssign(this.value, ${itemIndex})" autofocus>
+      <div id="pos-assign-results" class="mt-3 space-y-2 max-h-64 overflow-y-auto">
+        <p class="text-sm text-gray-400">Type a name to search...</p>
+      </div>
+      <div class="mt-4 flex justify-between items-center">
+        ${item.assigned_member
+          ? `<button onclick="posCart[${itemIndex}].assigned_member=null; posRenderCart(); closeModal();" class="text-sm text-red-500 hover:text-red-700">Remove assignment</button>`
+          : '<span></span>'}
+        <button onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('pos-assign-search')?.focus(), 100);
+}
+
+let posAssignSearchTimeout = null;
+function posSearchForAssign(query, itemIndex) {
+  clearTimeout(posAssignSearchTimeout);
+  const container = document.getElementById('pos-assign-results');
+  if (query.length < 2) {
+    container.innerHTML = '<p class="text-sm text-gray-400">Type a name to search...</p>';
+    return;
+  }
+  posAssignSearchTimeout = setTimeout(async () => {
+    try {
+      if (query.startsWith('BR-') || query.startsWith('BRN-')) {
+        const m = await api('GET', '/api/members/by-qr/' + encodeURIComponent(query));
+        if (m) { posCart[itemIndex].assigned_member = m; posRenderCart(); closeModal(); return; }
+      }
+      const results = await api('GET', '/api/members/search?q=' + encodeURIComponent(query) + '&limit=8');
+      if (!results.length) { container.innerHTML = '<p class="text-sm text-gray-400">No members found</p>'; return; }
+      container.innerHTML = results.map(m => {
+        const initials = (m.first_name[0] + m.last_name[0]).toUpperCase();
+        const colour = nameToColour(m.first_name + m.last_name);
+        const safeM = JSON.stringify(m).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition"
+          onclick="posCart[${itemIndex}].assigned_member = JSON.parse('${safeM}'); posRenderCart(); closeModal();">
+          <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:${colour}">${initials}</div>
+          <div><p class="font-medium text-gray-900 text-sm">${m.first_name} ${m.last_name}</p><p class="text-xs text-gray-500">${m.email || ''}</p></div>
+        </div>`;
+      }).join('');
+    } catch (e) { container.innerHTML = '<p class="text-sm text-red-500">Search error</p>'; }
+  }, 200);
 }
 
 function posRenderMemberDisplay() {
@@ -535,38 +622,38 @@ async function posPayMethod(method) {
     let checkedIn = false;
     let membershipPurchased = false;
 
-    if (savedMember) {
-      // Day Entry: issue pass and optionally check in
+    {
+      // Day Entry: issue pass per assigned member, auto check-in each
       const dayEntryItems = savedCart.filter(item => posIsDayEntryProduct(item.description));
       if (dayEntryItems.length > 0) {
         try {
-          // Find matching pass type
           const passTypes = await api('GET', '/api/passes/types');
-          const firstDE = dayEntryItems[0];
-          const mapping = posMapProductToPassType(firstDE.description);
-          const passType = passTypes.find(pt => pt.name === mapping.match && pt.category === 'single_entry');
+          const now = new Date();
+          const hour = now.getHours();
+          const day = now.getDay();
+          const isWeekday = day >= 1 && day <= 5;
+          const isPeak = !isWeekday || hour < 10 || hour >= 16;
 
-          if (passType) {
-            const now = new Date();
-            const hour = now.getHours();
-            const day = now.getDay();
-            const isWeekday = day >= 1 && day <= 5;
-            const isPeak = !isWeekday || hour < 10 || hour >= 16;
-
-            passIssued = await api('POST', '/api/passes/issue', {
-              memberId: savedMember.id,
-              passTypeId: passType.id,
-              isPeak: isPeak,
-              pricePaid: firstDE.unit_price
-            });
-          }
-
-          // Auto check-in if toggle is on
-          if (savedAutoCheckin) {
-            try {
-              const ciResult = await api('POST', '/api/checkin/process', { memberId: savedMember.id, method: 'pos' });
-              if (ciResult.success) checkedIn = true;
-            } catch (e) { console.warn('Auto check-in failed:', e); }
+          for (const deItem of dayEntryItems) {
+            const targetMember = deItem.assigned_member || savedMember;
+            if (!targetMember) continue;
+            const mapping = posMapProductToPassType(deItem.description);
+            const passType = passTypes.find(pt => pt.name === mapping.match && pt.category === 'single_entry');
+            if (passType) {
+              const p = await api('POST', '/api/passes/issue', {
+                memberId: targetMember.id,
+                passTypeId: passType.id,
+                isPeak,
+                pricePaid: deItem.unit_price
+              });
+              if (!passIssued) passIssued = p; // keep first for receipt display
+            }
+            if (savedAutoCheckin) {
+              try {
+                const ci = await api('POST', '/api/checkin/process', { memberId: targetMember.id, method: 'pos' });
+                if (ci.success) checkedIn = true;
+              } catch (e) {}
+            }
           }
         } catch (e) { console.warn('Day entry pass issue failed:', e); }
       }
