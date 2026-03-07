@@ -381,7 +381,7 @@ router.get('/:id/photo', (req, res, next) => {
 router.post('/:id/warning', (req, res, next) => {
   try {
     const { has_warning, warning_note } = req.body;
-    getDb().prepare('UPDATE members SET has_warning = ?, warning_note = ?, updated_at = datetime("now") WHERE id = ?')
+    getDb().prepare("UPDATE members SET has_warning = ?, warning_note = ?, updated_at = datetime('now') WHERE id = ?")
       .run(has_warning ? 1 : 0, warning_note || null, req.params.id);
     res.json({ success: true });
   } catch (e) { next(e); }

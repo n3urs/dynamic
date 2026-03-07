@@ -2591,13 +2591,9 @@ async function updateMember(e, memberId) {
   }
   delete raw.dob_day; delete raw.dob_month; delete raw.dob_year;
 
-  // Address: if user typed in the combined field, store it in address_line1 and clear others
-  // (address_line1 textarea holds formatted address)
-  // Keep address_line1 as-is, blank out the sub-fields that are no longer shown
-  raw.address_line2 = raw.address_line2 || '';
-  raw.city = raw.city || '';
-  raw.region = raw.region || '';
-  raw.postal_code = raw.postal_code || '';
+  // address_line1 is the combined address textarea — don't touch city/region/postal_code
+  // (they're not in the form, so they won't appear in raw, and the model only updates
+  //  fields that are present in the payload — so they'll be left unchanged in the DB)
 
   try {
     await api('PUT', `/api/members/${memberId}`, raw);

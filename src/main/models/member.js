@@ -107,11 +107,12 @@ const Member = {
     if (!existing) throw new Error(`Member ${id} not found`);
 
     const fields = [
-      'first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
+      'first_name', 'middle_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
       'address_line1', 'address_line2', 'city', 'region', 'postal_code', 'country',
       'emergency_contact_name', 'emergency_contact_phone',
       'medical_conditions', 'climbing_experience', 'member_of_other_walls',
-      'climbs_past_12_months', 'photo_id_consent', 'notes', 'is_minor'
+      'climbs_past_12_months', 'photo_id_consent', 'notes', 'is_minor',
+      'has_warning', 'warning_note', 'photo_url'
     ];
 
     const updates = [];
