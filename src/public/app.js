@@ -404,9 +404,11 @@ function assignPassModal(memberId, name) {
     const passTypes = await api('GET', '/api/passes/types');
     const categories = {
       'single_entry': 'Day Entry',
+      'multi_visit': '10-Visit Pass',
       'monthly_pass': 'Monthly Pass',
-      'ten_visit': '10-Visit Pass',
+      'annual_membership': 'Annual Membership',
       'membership': 'Membership',
+      'staff': 'Staff / Complimentary',
     };
 
     showModal(`
@@ -4205,6 +4207,7 @@ const PASS_CATEGORIES = {
   monthly_pass: 'Monthly Pass',
   annual_membership: 'Annual Membership',
   membership: 'Membership',
+  staff: 'Staff / Complimentary',
 };
 
 async function loadPassTypeSettings() {

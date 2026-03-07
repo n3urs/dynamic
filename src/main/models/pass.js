@@ -219,6 +219,10 @@ const Pass = {
       { name: 'Concession/Student/U18 Monthly Membership', category: 'membership_dd', price_peak: 35.00, price_off_peak: 30.00, duration_days: 30, is_recurring: 1, recurring_interval: 'monthly' },
       { name: 'Concession/Student/U18 Annual Membership', category: 'membership_dd', price_peak: 385.00, price_off_peak: 330.00, duration_days: 365, is_recurring: 1, recurring_interval: 'annual' },
       { name: 'Family Monthly Membership', category: 'membership_dd', price_peak: 85.00, price_off_peak: 65.00, duration_days: 30, is_recurring: 1, recurring_interval: 'monthly' },
+      // Staff & Complimentary
+      { name: 'Staff Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: null, duration_days: 365, description: 'Annual staff complimentary pass' },
+      { name: 'Staff Day Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: 1, duration_days: 1, description: 'Single day staff pass' },
+      { name: 'Complimentary Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: 1, duration_days: 30, description: 'Complimentary guest pass' },
     ];
 
     for (const t of types) {
