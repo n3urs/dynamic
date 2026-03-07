@@ -438,6 +438,16 @@ function posAssignMemberToItem(itemIndex) {
 }
 
 let posAssignSearchTimeout = null;
+let posAssignSearchCache = []; // store results so onclick can reference by index safely
+
+function posSelectAssignResult(itemIndex, resultIndex) {
+  const m = posAssignSearchCache[resultIndex];
+  if (!m) return;
+  posCart[itemIndex].assigned_member = m;
+  posRenderCart();
+  closeModal();
+}
+
 function posSearchForAssign(query, itemIndex) {
   clearTimeout(posAssignSearchTimeout);
   const container = document.getElementById('pos-assign-results');
@@ -453,12 +463,12 @@ function posSearchForAssign(query, itemIndex) {
       }
       const results = await api('GET', '/api/members/search?q=' + encodeURIComponent(query) + '&limit=8');
       if (!results.length) { container.innerHTML = '<p class="text-sm text-gray-400">No members found</p>'; return; }
-      container.innerHTML = results.map(m => {
+      posAssignSearchCache = results;
+      container.innerHTML = results.map((m, idx) => {
         const initials = (m.first_name[0] + m.last_name[0]).toUpperCase();
         const colour = nameToColour(m.first_name + m.last_name);
-        const safeM = JSON.stringify(m).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         return `<div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition"
-          onclick="posCart[${itemIndex}].assigned_member = JSON.parse('${safeM}'); posRenderCart(); closeModal();">
+          onclick="posSelectAssignResult(${itemIndex}, ${idx})">
           <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:${colour}">${initials}</div>
           <div><p class="font-medium text-gray-900 text-sm">${m.first_name} ${m.last_name}</p><p class="text-xs text-gray-500">${m.email || ''}</p></div>
         </div>`;
