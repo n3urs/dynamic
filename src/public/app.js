@@ -342,6 +342,43 @@ function renderMemberCard(m, options = {}) {
   `;
 }
 
+function renderActiveVisitorCard(v) {
+  const initials = (v.first_name[0] + v.last_name[0]).toUpperCase();
+  const colour = nameToColour(v.first_name + v.last_name);
+  const age = calculateAge(v.date_of_birth);
+  const isUnder18 = age !== null && age < 18;
+
+  // Time in gym
+  let timeLabel = '';
+  if (v.checked_in_at) {
+    const mins = Math.floor((Date.now() - new Date(v.checked_in_at)) / 60000);
+    if (mins < 60) timeLabel = `${mins}m`;
+    else { const h = Math.floor(mins / 60); const m = mins % 60; timeLabel = m > 0 ? `${h}h ${m}m` : `${h}h`; }
+  }
+
+  const passName = v.pass_name || v.active_pass_name || '';
+  const method = { desk: 'Desk', qr_scan: 'QR', pos: 'POS', app: 'App' }[v.method] || v.method || 'Desk';
+
+  return `
+    <div class="bg-white border border-gray-200 rounded-xl p-3.5 hover:shadow-sm hover:border-blue-200 transition cursor-pointer flex items-center gap-3"
+         onclick="openMemberProfile('${v.id}')">
+      <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0 relative"
+           style="background:${colour}">
+        ${initials}
+        ${isUnder18 ? `<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-white"></span>` : ''}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-sm text-gray-900 truncate">${v.first_name} ${v.last_name}</p>
+        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+          ${passName ? `<span class="text-xs text-gray-500 truncate">${passName}</span>` : ''}
+          ${passName && timeLabel ? '<span class="text-gray-300 text-xs">·</span>' : ''}
+          ${timeLabel ? `<span class="text-xs font-medium text-blue-500">${timeLabel}</span>` : ''}
+        </div>
+      </div>
+      <span class="text-xs text-gray-300 flex-shrink-0">${method}</span>
+    </div>`;
+}
+
 // One-press check-in from member profile (no PIN — member has active pass, staff already looked them up)
 async function quickCheckInFromProfile(memberId, name) {
   try {
@@ -554,52 +591,59 @@ async function loadPage(pageName) {
 
 let dashboardSearchTimer = null;
 
+let dashboardAutoRefresh = null;
+
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
 
   el.innerHTML = `
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold text-gray-900">Visitors</h2>
-      <p class="text-gray-500 mt-1">Search members, manage active visitors</p>
+    <!-- Stats bar -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" id="dashboard-stats">
+      ${[1,2,3,4].map(() => `<div class="bg-white border border-gray-200 rounded-xl p-4 animate-pulse"><div class="h-3 bg-gray-200 rounded w-16 mb-2"></div><div class="h-7 bg-gray-200 rounded w-10"></div></div>`).join('')}
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-6">
+    <!-- Search -->
+    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-5">
       <div class="relative">
         <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-        <input type="text" id="dashboard-search" class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-               placeholder="Search members by name or email..."
-               autocomplete="off">
+        <input type="text" id="dashboard-search" class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+               placeholder="Search by name, email or phone..." autocomplete="off">
       </div>
-      <p id="dashboard-search-hint" class="text-xs text-gray-400 mt-2">Enter at least 3 characters to search</p>
-      <div id="dashboard-search-results" class="mt-4 hidden">
-        <div class="flex items-center justify-between mb-2">
-          <span id="dashboard-search-count" class="text-sm text-gray-500"></span>
-        </div>
-        <div id="dashboard-search-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+      <p id="dashboard-search-hint" class="text-xs text-gray-400 mt-2">Type to search all members</p>
+      <div id="dashboard-search-results" class="mt-3 hidden">
+        <span id="dashboard-search-count" class="text-xs text-gray-400"></span>
+        <div id="dashboard-search-grid" class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2"></div>
       </div>
     </div>
 
-    <div class="mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-lg font-bold text-gray-900" id="active-visitors-header">Active Visitors (0)</h3>
-        <button onclick="loadActiveVisitors()" class="btn btn-sm btn-secondary">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Refresh
-        </button>
+    <!-- Validation queue -->
+    <div id="dashboard-validation-queue" class="mb-5 hidden">
+      <div class="flex items-center gap-2 mb-2">
+        <h3 class="text-base font-bold text-gray-900">Needs Validation</h3>
+        <span id="validation-queue-badge" class="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-full"></span>
       </div>
-      <div id="active-visitors-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+      <div id="validation-queue-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Active visitors -->
+    <div class="mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-base font-bold text-gray-900" id="active-visitors-header">In Gym Now (0)</h3>
+        <div class="flex items-center gap-3">
+          <span id="dashboard-refresh-indicator" class="text-xs text-gray-400 hidden">Auto-refreshing</span>
+          <button onclick="refreshDashboardData()" class="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div id="active-visitors-grid" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
       <div id="active-visitors-pagination" class="mt-3 flex justify-center gap-2"></div>
     </div>
 
-    <div class="mb-6">
-      <h3 class="text-lg font-bold text-gray-900 mb-3">Recent Waiver Submissions</h3>
-      <div id="recent-forms-list" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <p class="text-gray-400 text-sm p-4 text-center">Loading...</p>
-      </div>
-    </div>
-
-    <button onclick="showNewMemberModal()" 
-            class="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition z-40">
+    <!-- FAB -->
+    <button onclick="showNewMemberModal()"
+            class="fixed bottom-6 right-6 w-14 h-14 bg-[#1E3A5F] hover:bg-[#2A4D7A] text-white rounded-full shadow-xl flex items-center justify-center text-2xl transition z-40">
       +
     </button>
   `;
@@ -608,22 +652,113 @@ async function loadDashboard() {
   searchInput.addEventListener('input', () => {
     clearTimeout(dashboardSearchTimer);
     const q = searchInput.value.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       document.getElementById('dashboard-search-results').classList.add('hidden');
-      document.getElementById('dashboard-search-hint').textContent = 'Enter at least 3 characters to search';
+      document.getElementById('dashboard-search-hint').textContent = 'Type to search all members';
       return;
     }
-    dashboardSearchTimer = setTimeout(() => dashboardSearch(q), 300);
+    dashboardSearchTimer = setTimeout(() => dashboardSearch(q), 250);
   });
-
   searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      searchInput.value = '';
-      document.getElementById('dashboard-search-results').classList.add('hidden');
-    }
+    if (e.key === 'Escape') { searchInput.value = ''; document.getElementById('dashboard-search-results').classList.add('hidden'); }
   });
 
-  await Promise.all([loadActiveVisitors(), loadRecentForms()]);
+  await refreshDashboardData();
+
+  // Auto-refresh every 45 seconds
+  clearInterval(dashboardAutoRefresh);
+  dashboardAutoRefresh = setInterval(() => {
+    if (document.getElementById('page-dashboard')?.classList.contains('active')) {
+      refreshDashboardData(true);
+    } else {
+      clearInterval(dashboardAutoRefresh);
+    }
+  }, 45000);
+}
+
+async function refreshDashboardData(silent = false) {
+  await Promise.all([
+    loadDashboardStats(),
+    loadActiveVisitors(),
+    loadValidationQueue(),
+  ]);
+}
+
+async function loadDashboardStats() {
+  try {
+    const d = await api('GET', '/api/stats/dashboard');
+    document.getElementById('dashboard-stats').innerHTML = `
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs text-gray-500 font-medium uppercase">In Gym Now</p>
+        <p class="text-3xl font-bold text-blue-600 mt-1">${d.currentlyInGym ?? d.todayCheckIns}</p>
+        <p class="text-xs text-gray-400 mt-1">${d.todayCheckIns} total today</p>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs text-gray-500 font-medium uppercase">Revenue Today</p>
+        <p class="text-3xl font-bold text-green-600 mt-1">£${parseFloat(d.todayRevenue || 0).toFixed(0)}</p>
+        <p class="text-xs text-gray-400 mt-1">${d.todayTransactions || 0} transactions</p>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs text-gray-500 font-medium uppercase">Members</p>
+        <p class="text-3xl font-bold text-gray-800 mt-1">${d.totalMembers}</p>
+        <p class="text-xs text-gray-400 mt-1">${d.activeMembers} with active pass</p>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs text-gray-500 font-medium uppercase">This Week</p>
+        <p class="text-3xl font-bold text-gray-800 mt-1">£${parseFloat(d.weekRevenue || 0).toFixed(0)}</p>
+        <p class="text-xs text-gray-400 mt-1">${d.weekCheckIns ?? '—'} check-ins</p>
+      </div>
+    `;
+  } catch (e) {}
+}
+
+async function loadValidationQueue() {
+  try {
+    const result = await api('GET', '/api/members/list?filter=reg_due&perPage=20');
+    const members = result.members || [];
+    const container = document.getElementById('dashboard-validation-queue');
+    const list = document.getElementById('validation-queue-list');
+    const badge = document.getElementById('validation-queue-badge');
+
+    if (members.length === 0) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    badge.textContent = members.length;
+    list.innerHTML = members.map(m => {
+      const initials = (m.first_name[0] + m.last_name[0]).toUpperCase();
+      const colour = nameToColour(m.first_name + m.last_name);
+      const age = calculateAge(m.date_of_birth);
+      const isUnder18 = age !== null && age < 18;
+      const hasWaiver = m.waiver_valid;
+      return `
+        <div class="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0 cursor-pointer" onclick="openMemberProfile('${m.id}')">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style="background:${colour}">${initials}</div>
+            <div class="min-w-0">
+              <p class="font-semibold text-sm text-gray-900 truncate">${m.first_name} ${m.last_name}${isUnder18 ? ` <span class="text-blue-600 text-xs">(${age})</span>` : ''}</p>
+              <div class="flex items-center gap-2 mt-0.5">
+                ${hasWaiver
+                  ? `<span class="text-xs text-green-600 font-medium">Waiver ✓</span>`
+                  : `<span class="text-xs text-red-500 font-medium">No waiver</span>`}
+                <span class="text-xs text-orange-600 font-medium">£3 reg fee due</span>
+              </div>
+            </div>
+          </div>
+          ${hasWaiver ? `
+            <button onclick="event.stopPropagation(); validateRegistration('${m.id}')"
+              class="flex-shrink-0 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition whitespace-nowrap">
+              Collect £3
+            </button>` : `
+            <button onclick="event.stopPropagation(); openMemberProfile('${m.id}')"
+              class="flex-shrink-0 px-3 py-1.5 border border-orange-300 text-orange-600 text-xs font-medium rounded-lg hover:bg-orange-100 transition whitespace-nowrap">
+              View Profile
+            </button>`}
+        </div>`;
+    }).join('');
+  } catch (e) {}
 }
 
 async function dashboardSearch(query) {
@@ -662,12 +797,12 @@ async function loadActiveVisitors(page = 1) {
     header.textContent = `Active Visitors (${data.total})`;
 
     if (data.visitors.length === 0) {
-      grid.innerHTML = '<p class="text-gray-400 text-sm col-span-2 text-center py-8">No active visitors today</p>';
+      grid.innerHTML = '<p class="text-gray-400 text-sm col-span-2 text-center py-8">Nobody checked in yet today</p>';
       pagination.innerHTML = '';
       return;
     }
 
-    grid.innerHTML = data.visitors.map(m => renderMemberCard(m, { showCheckin: false })).join('');
+    grid.innerHTML = data.visitors.map(v => renderActiveVisitorCard(v)).join('');
 
     if (data.totalPages > 1) {
       let paginationHtml = '';

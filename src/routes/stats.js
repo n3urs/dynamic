@@ -15,6 +15,14 @@ router.get('/dashboard', (req, res, next) => {
       SELECT count(*) as c FROM check_ins WHERE date(checked_in_at) = date('now')
     `).get().c;
 
+    const currentlyInGym = db.prepare(`
+      SELECT count(DISTINCT member_id) as c FROM check_ins WHERE date(checked_in_at) = date('now')
+    `).get().c;
+
+    const weekCheckIns = db.prepare(`
+      SELECT count(*) as c FROM check_ins WHERE checked_in_at >= datetime('now', '-7 days')
+    `).get().c;
+
     const todayRevenue = db.prepare(`
       SELECT COALESCE(sum(total_amount), 0) as total FROM transactions
       WHERE date(created_at) = date('now') AND payment_status = 'completed'
@@ -39,9 +47,11 @@ router.get('/dashboard', (req, res, next) => {
       totalMembers,
       activeMembers,
       todayCheckIns,
+      currentlyInGym,
       todayRevenue,
       todayTransactions,
       weekRevenue,
+      weekCheckIns,
       monthRevenue,
     });
   } catch (e) { next(e); }

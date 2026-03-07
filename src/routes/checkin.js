@@ -142,9 +142,12 @@ router.get('/active', (req, res, next) => {
 
     const visitors = db.prepare(`
       SELECT m.*, ci.checked_in_at, ci.method,
-        MAX(ci.checked_in_at) as latest_checkin
+        MAX(ci.checked_in_at) as latest_checkin,
+        pt.name as pass_name
       FROM check_ins ci
       JOIN members m ON ci.member_id = m.id
+      LEFT JOIN member_passes mp ON ci.member_pass_id = mp.id
+      LEFT JOIN pass_types pt ON mp.pass_type_id = pt.id
       WHERE date(ci.checked_in_at) = date('now')
       GROUP BY m.id
       ORDER BY latest_checkin DESC
