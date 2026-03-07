@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS check_ins (
 
 CREATE INDEX IF NOT EXISTS idx_check_ins_date ON check_ins(checked_in_at);
 CREATE INDEX IF NOT EXISTS idx_check_ins_member ON check_ins(member_id);
+CREATE INDEX IF NOT EXISTS idx_check_ins_member_date ON check_ins(member_id, checked_in_at DESC);
 
 -- ============================================================
 -- PRODUCTS & INVENTORY
@@ -268,6 +269,7 @@ CREATE TABLE IF NOT EXISTS transaction_items (
 
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_transactions_member ON transactions(member_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_member_date ON transactions(member_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transaction_items_txn ON transaction_items(transaction_id);
 
 -- ============================================================

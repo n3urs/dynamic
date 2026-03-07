@@ -1196,6 +1196,7 @@ async function refreshMembersList(query = '', page = 1) {
 // ============================================================
 
 async function openMemberProfile(memberId) {
+  window._currentProfileMemberId = memberId;
   try {
     const [member, comments, passes, visits, transactions, events] = await Promise.all([
       api('GET', `/api/members/${memberId}/with-pass-status`),
@@ -1343,40 +1344,210 @@ function switchProfileTab(tabName) {
 }
 
 function renderPassesTab(passes) {
-  if (!passes || passes.length === 0) return '<p class="text-gray-400 text-center py-8">No passes</p>';
-  return passes.map(p => {
+  if (!passes || passes.length === 0) {
+    return `<div class="text-center py-10">
+      <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg>
+      <p class="text-gray-400 text-sm">No passes on this account</p>
+    </div>`;
+  }
+
+  const activePasses = passes.filter(p => p.status === 'active');
+  const otherPasses = passes.filter(p => p.status !== 'active');
+
+  const renderPassCard = (p) => {
     const isActive = p.status === 'active';
-    const statusColour = isActive ? 'green' : p.status === 'paused' ? 'yellow' : 'red';
+    const isPaused = p.status === 'paused';
+    const now = new Date();
+    const expiresAt = p.expires_at ? new Date(p.expires_at) : null;
+    const expiringToday = expiresAt && expiresAt.toDateString() === now.toDateString();
+    const expiringSoon = expiresAt && expiresAt > now && (expiresAt - now) < 7 * 24 * 60 * 60 * 1000;
+    const expired = expiresAt && expiresAt < now;
+
+    const borderClass = isActive
+      ? (expiringToday ? 'border-l-4 border-l-orange-400' : 'border-l-4 border-l-green-500')
+      : isPaused ? 'border-l-4 border-l-yellow-400' : 'opacity-60';
+
+    const badgeClass = isActive ? 'bg-green-100 text-green-700' : isPaused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500';
+
+    const categoryLabel = {
+      'single_entry': 'Day Entry', 'monthly_pass': 'Monthly Pass',
+      'multi_visit': '10-Visit Pass', 'membership': 'Membership',
+      'annual_membership': 'Annual Membership'
+    }[p.category] || p.category || '';
+
+    let expiryLine = '';
+    if (expiringToday) expiryLine = `<span class="text-orange-500 font-semibold">Expires today</span>`;
+    else if (expiringSoon && !expired) expiryLine = `<span class="text-yellow-600">Expires ${formatDate(p.expires_at)}</span>`;
+    else if (expiresAt) expiryLine = `<span>${expired ? 'Expired' : 'Expires'} ${formatDate(p.expires_at)}</span>`;
+
+    const visitsLine = p.visits_remaining !== null
+      ? `<span class="font-medium text-gray-700">${p.visits_remaining} visit${p.visits_remaining !== 1 ? 's' : ''} remaining</span>`
+      : `<span>Unlimited visits</span>`;
+
+    const priceLine = p.price_paid != null ? `<span>Paid £${parseFloat(p.price_paid).toFixed(2)}</span>` : '';
+
+    const actions = isActive ? `
+      <div class="flex gap-1.5 mt-3 pt-3 border-t border-gray-100">
+        ${p.category !== 'single_entry' ? `<button onclick="passAction('pause','${p.id}')" class="flex-1 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition">Pause</button>` : ''}
+        ${p.expires_at ? `<button onclick="passAction('extend','${p.id}')" class="flex-1 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition">Extend</button>` : ''}
+        <button onclick="passAction('cancel','${p.id}')" class="flex-1 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition">Cancel</button>
+      </div>` : isPaused ? `
+      <div class="flex gap-1.5 mt-3 pt-3 border-t border-gray-100">
+        <button onclick="passAction('unpause','${p.id}')" class="flex-1 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition">Resume Pass</button>
+        <button onclick="passAction('cancel','${p.id}')" class="flex-1 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition">Cancel</button>
+      </div>` : '';
+
     return `
-      <div class="bg-white border border-gray-200 rounded-xl p-4 mb-3 ${isActive ? 'border-l-4 border-l-green-500' : ''}">
-        <div class="flex items-start justify-between">
-          <div><h4 class="font-bold text-sm">${p.pass_name || 'Pass'}</h4><p class="text-xs text-gray-500 mt-0.5">${p.category || ''}</p></div>
-          <span class="badge badge-${statusColour === 'green' ? 'success' : statusColour === 'yellow' ? 'warning' : 'danger'}">${p.status}</span>
+      <div class="bg-white border border-gray-200 rounded-xl p-4 mb-3 ${borderClass}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <h4 class="font-bold text-sm text-gray-900 truncate">${p.pass_name || 'Pass'}</h4>
+            <p class="text-xs text-gray-400 mt-0.5">${categoryLabel}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${badgeClass}">${p.status}</span>
         </div>
-        <div class="flex items-center gap-4 mt-2 text-xs text-gray-500">
-          ${p.visits_remaining !== null ? `<span>Visits: ${p.visits_remaining} remaining</span>` : '<span>Unlimited visits</span>'}
-          ${p.started_at ? `<span>From: ${formatDate(p.started_at)}</span>` : ''}
-          ${p.expires_at ? `<span>Expires: ${formatDate(p.expires_at)}</span>` : ''}
+        <div class="flex flex-wrap gap-x-4 gap-y-0.5 mt-2 text-xs text-gray-500">
+          ${visitsLine}${expiryLine ? ' · ' + expiryLine : ''}
+          ${priceLine ? '<br>' + priceLine : ''}
+          ${p.is_peak !== null && p.is_peak !== undefined ? `<span class="${p.is_peak ? 'text-amber-600' : 'text-blue-600'}">${p.is_peak ? 'Peak' : 'Off-peak'}</span>` : ''}
         </div>
-        ${p.status === 'paused' && p.pause_reason ? `<p class="text-xs text-yellow-600 mt-1">Paused: ${p.pause_reason}</p>` : ''}
-      </div>
-    `;
-  }).join('');
+        ${isPaused && p.pause_reason ? `<p class="text-xs text-yellow-600 mt-1.5 bg-yellow-50 rounded px-2 py-1">Paused: ${p.pause_reason}</p>` : ''}
+        ${actions}
+      </div>`;
+  };
+
+  let html = '';
+  if (activePasses.length) html += activePasses.map(renderPassCard).join('');
+  if (otherPasses.length) {
+    html += `<p class="text-xs uppercase font-bold text-gray-400 mt-4 mb-2">History</p>`;
+    html += otherPasses.map(renderPassCard).join('');
+  }
+  return html;
+}
+
+async function passAction(action, passId) {
+  const memberId = window._currentProfileMemberId;
+  if (action === 'cancel') {
+    if (!confirm('Cancel this pass? This cannot be undone.')) return;
+    await api('POST', `/api/passes/${passId}/cancel`, { reason: 'Cancelled by staff' });
+  } else if (action === 'pause') {
+    const reason = prompt('Reason for pause (optional):') ?? '';
+    await api('POST', `/api/passes/${passId}/pause`, { reason });
+  } else if (action === 'unpause') {
+    await api('POST', `/api/passes/${passId}/unpause`);
+  } else if (action === 'extend') {
+    const days = prompt('Extend by how many days?');
+    if (!days || isNaN(days)) return;
+    await api('POST', `/api/passes/${passId}/extend`, { days: parseInt(days) });
+  }
+  showToast('Pass updated', 'success');
+  if (memberId) openMemberProfile(memberId);
 }
 
 function renderVisitsTab(visits) {
-  if (!visits || visits.length === 0) return '<p class="text-gray-400 text-center py-8">No visit history</p>';
-  return `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-400 uppercase border-b"><th class="pb-2">Date</th><th class="pb-2">Time</th><th class="pb-2">Method</th><th class="pb-2">Pass</th></tr></thead><tbody>${visits.map(v => `<tr class="border-b border-gray-50"><td class="py-2">${formatDate(v.checked_in_at)}</td><td class="py-2 text-gray-500">${v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}) : '—'}</td><td class="py-2"><span class="badge badge-neutral">${v.method || 'desk'}</span></td><td class="py-2 text-gray-500">${v.pass_name || '—'}</td></tr>`).join('')}</tbody></table>`;
+  if (!visits || visits.length === 0) {
+    return `<div class="text-center py-10">
+      <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      <p class="text-gray-400 text-sm">No visit history yet</p>
+    </div>`;
+  }
+
+  const methodLabel = { 'desk': 'Desk', 'qr_scan': 'QR Scan', 'pos': 'POS', 'app': 'App' };
+  const methodColour = { 'desk': 'bg-blue-100 text-blue-700', 'qr_scan': 'bg-purple-100 text-purple-700', 'pos': 'bg-green-100 text-green-700', 'app': 'bg-indigo-100 text-indigo-700' };
+
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-xs text-gray-400">${visits.length} visit${visits.length !== 1 ? 's' : ''} shown (most recent first)</p>
+    </div>
+    <div class="space-y-1">
+      ${visits.map(v => {
+        const dt = v.checked_in_at ? new Date(v.checked_in_at) : null;
+        const date = dt ? dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+        const time = dt ? dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+        const method = v.method || 'desk';
+        const mLabel = methodLabel[method] || method;
+        const mColour = methodColour[method] || 'bg-gray-100 text-gray-600';
+        const peak = v.is_peak !== null && v.is_peak !== undefined
+          ? `<span class="text-xs ${v.is_peak ? 'text-amber-500' : 'text-blue-500'}">${v.is_peak ? 'Peak' : 'Off-peak'}</span>` : '';
+        return `<div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 transition">
+          <div>
+            <p class="text-sm font-medium text-gray-800">${date}</p>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span class="text-xs text-gray-400">${time}</span>
+              ${peak}
+              <span class="text-xs text-gray-400">${v.pass_name || 'No pass'}</span>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-xs font-medium ${mColour}">${mLabel}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
 }
 
 function renderEventsTab(events) {
-  if (!events || events.length === 0) return '<p class="text-gray-400 text-center py-8">No event history</p>';
-  return `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-400 uppercase border-b"><th class="pb-2">Event</th><th class="pb-2">Date</th><th class="pb-2">Status</th></tr></thead><tbody>${events.map(e => `<tr class="border-b border-gray-50"><td class="py-2 font-medium">${e.event_name}</td><td class="py-2 text-gray-500">${formatDate(e.starts_at)}</td><td class="py-2"><span class="badge badge-neutral">${e.status}</span></td></tr>`).join('')}</tbody></table>`;
+  if (!events || events.length === 0) {
+    return `<div class="text-center py-10">
+      <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      <p class="text-gray-400 text-sm">No events booked</p>
+    </div>`;
+  }
+
+  const statusColour = { 'enrolled': 'bg-green-100 text-green-700', 'waitlist': 'bg-yellow-100 text-yellow-700', 'cancelled': 'bg-gray-100 text-gray-500', 'attended': 'bg-blue-100 text-blue-700' };
+  return `<div class="space-y-2">
+    ${events.map(e => {
+      const dt = e.starts_at ? new Date(e.starts_at) : null;
+      const dateStr = dt ? dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+      const isPast = dt && dt < new Date();
+      const sc = statusColour[e.status] || 'bg-gray-100 text-gray-600';
+      return `<div class="flex items-center justify-between p-3 rounded-xl border border-gray-100 ${isPast ? 'opacity-60' : ''}">
+        <div>
+          <p class="text-sm font-semibold text-gray-800">${e.event_name}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${dateStr}</p>
+        </div>
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium ${sc}">${e.status}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function renderTransactionsTab(transactions) {
-  if (!transactions || transactions.length === 0) return '<p class="text-gray-400 text-center py-8">No transactions</p>';
-  return `<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-400 uppercase border-b"><th class="pb-2">Date</th><th class="pb-2">Items</th><th class="pb-2">Method</th><th class="pb-2 text-right">Amount</th></tr></thead><tbody>${transactions.map(t => `<tr class="border-b border-gray-50"><td class="py-2">${formatDate(t.created_at)}</td><td class="py-2 text-gray-600 truncate max-w-[200px]">${t.items_summary || '—'}</td><td class="py-2"><span class="badge badge-neutral">${t.payment_method === 'dojo_card' ? 'Card' : t.payment_method}</span></td><td class="py-2 text-right font-semibold ${t.total_amount < 0 ? 'text-red-500' : ''}">£${Math.abs(t.total_amount).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+  if (!transactions || transactions.length === 0) {
+    return `<div class="text-center py-10">
+      <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <p class="text-gray-400 text-sm">No transactions</p>
+    </div>`;
+  }
+
+  const total = transactions.reduce((s, t) => s + (t.total_amount || 0), 0);
+  const methodIcon = { 'dojo_card': '💳', 'cash': '💵', 'voucher': '🎟️', 'gift_card': '🎁', 'other': '•' };
+  const methodLabel = { 'dojo_card': 'Card', 'cash': 'Cash', 'voucher': 'Voucher', 'gift_card': 'Gift Card', 'other': 'Other' };
+
+  return `
+    <div class="flex items-center justify-between mb-3 px-1">
+      <p class="text-xs text-gray-400">${transactions.length} transaction${transactions.length !== 1 ? 's' : ''}</p>
+      <p class="text-sm font-bold text-gray-700">Total spent: £${total.toFixed(2)}</p>
+    </div>
+    <div class="space-y-2">
+      ${transactions.map(t => {
+        const dt = t.created_at ? new Date(t.created_at) : null;
+        const dateStr = dt ? dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+        const timeStr = dt ? dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+        const icon = methodIcon[t.payment_method] || '•';
+        const label = methodLabel[t.payment_method] || t.payment_method;
+        const items = t.items_summary ? t.items_summary.split(', ') : [];
+        return `<div class="p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                ${items.map(item => `<span class="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">${item.trim()}</span>`).join('')}
+              </div>
+              <p class="text-xs text-gray-400 mt-1">${dateStr} · ${timeStr} · ${icon} ${label}</p>
+            </div>
+            <p class="text-sm font-bold ${t.total_amount < 0 ? 'text-red-500' : 'text-gray-800'} flex-shrink-0">£${Math.abs(t.total_amount || 0).toFixed(2)}</p>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
 }
 
 function toggleCommentForm() {
