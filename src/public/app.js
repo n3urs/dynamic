@@ -361,6 +361,84 @@ async function quickCheckInFromProfile(memberId, name) {
   }
 }
 
+// Assign pass directly to member — requires manager PIN
+function assignPassModal(memberId, name) {
+  requirePin('members_edit', async (staff) => {
+    const passTypes = await api('GET', '/api/passes/types');
+    const categories = {
+      'single_entry': 'Day Entry',
+      'monthly_pass': 'Monthly Pass',
+      'ten_visit': '10-Visit Pass',
+      'membership': 'Membership',
+    };
+
+    showModal(`
+      <div class="p-6 max-w-md mx-auto">
+        <h3 class="text-lg font-bold text-gray-900 mb-1">Assign Pass</h3>
+        <p class="text-sm text-gray-500 mb-4">Assigning to <strong>${name}</strong> — authorised by <strong>${staff.first_name} ${staff.last_name}</strong></p>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1 uppercase font-medium">Pass Type</label>
+            <select id="assign-pass-type" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onchange="assignPassUpdatePrice()">
+              <option value="">Select a pass...</option>
+              ${Object.entries(categories).map(([cat, label]) => {
+                const group = passTypes.filter(p => p.category === cat);
+                if (!group.length) return '';
+                return `<optgroup label="${label}">${group.map(p => `<option value="${p.id}" data-peak="${p.price_peak}" data-offpeak="${p.price_off_peak}">${p.name} — £${p.price_peak?.toFixed(2)}</option>`).join('')}</optgroup>`;
+              }).join('')}
+            </select>
+          </div>
+          <div class="flex gap-3">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" id="assign-peak" checked class="w-4 h-4 rounded">
+              <span>Peak rate</span>
+            </label>
+            <span id="assign-price-display" class="text-sm text-gray-500 ml-auto"></span>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1 uppercase font-medium">Price Paid (£)</label>
+            <input type="number" id="assign-price-paid" step="0.01" min="0" placeholder="Leave blank for default"
+              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+        </div>
+        <div class="mt-5 flex gap-2">
+          <button onclick="closeModal()" class="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onclick="submitAssignPass('${memberId}')" class="flex-1 py-2.5 bg-[#1E3A5F] text-white rounded-lg text-sm font-semibold hover:bg-[#2A4D7A]">Assign Pass</button>
+        </div>
+      </div>
+    `);
+  }, 'Manager PIN', `Assign a pass to ${name}`);
+}
+
+function assignPassUpdatePrice() {
+  const sel = document.getElementById('assign-pass-type');
+  const opt = sel.options[sel.selectedIndex];
+  const isPeak = document.getElementById('assign-peak').checked;
+  const price = isPeak ? opt.dataset.peak : opt.dataset.offpeak;
+  const disp = document.getElementById('assign-price-display');
+  if (price) {
+    disp.textContent = `Default: £${parseFloat(price).toFixed(2)}`;
+    document.getElementById('assign-price-paid').placeholder = parseFloat(price).toFixed(2);
+  }
+}
+
+async function submitAssignPass(memberId) {
+  const passTypeId = document.getElementById('assign-pass-type').value;
+  if (!passTypeId) { showToast('Select a pass type', 'error'); return; }
+  const isPeak = document.getElementById('assign-peak').checked;
+  const pricePaidStr = document.getElementById('assign-price-paid').value;
+  const pricePaid = pricePaidStr ? parseFloat(pricePaidStr) : null;
+
+  try {
+    await api('POST', '/api/passes/issue', { memberId, passTypeId, isPeak, pricePaid });
+    showToast('Pass assigned', 'success');
+    closeModal();
+    openMemberProfile(memberId);
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
 // Open POS for a member — requires PIN first
 function openPOSForMemberWithPin(memberId, name) {
   requirePin('pos', (staff) => {
@@ -1181,6 +1259,7 @@ async function openMemberProfile(memberId) {
               </button>
             ` : ''}
             <button onclick="openPOSForMemberWithPin('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-primary w-full btn-sm">Open in POS</button>
+            <button onclick="assignPassModal('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">Assign Pass</button>
             <button onclick="editMemberModal('${member.id}')" class="btn btn-secondary w-full btn-sm">Edit Profile</button>
             ${passes.some(p => p.category === 'membership' && p.status === 'active') ? `
               <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>

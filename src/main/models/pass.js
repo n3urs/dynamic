@@ -65,7 +65,15 @@ const Pass = {
     const id = uuidv4();
 
     let expiresAt = null;
-    if (passType.duration_days) {
+    let visitsRemaining = passType.visits_included ?? null;
+
+    if (passType.category === 'single_entry') {
+      // Day passes: expire at midnight tonight, 1 visit
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+      expiresAt = endOfDay.toISOString();
+      visitsRemaining = visitsRemaining ?? 1;
+    } else if (passType.duration_days) {
       const d = new Date();
       d.setDate(d.getDate() + passType.duration_days);
       expiresAt = d.toISOString();
@@ -74,7 +82,7 @@ const Pass = {
     db.prepare(`
       INSERT INTO member_passes (id, member_id, pass_type_id, status, is_peak, price_paid, visits_remaining, expires_at)
       VALUES (?, ?, ?, 'active', ?, ?, ?, ?)
-    `).run(id, memberId, passTypeId, isPeak ? 1 : 0, price, passType.visits_included, expiresAt);
+    `).run(id, memberId, passTypeId, isPeak ? 1 : 0, price, visitsRemaining, expiresAt);
 
     return this.getById(id);
   },
