@@ -1,7 +1,7 @@
 {
   "name": "crux",
   "version": "0.2.0",
-  "description": "Crux \u2014 Climbing Gym Management Platform",
+  "description": "Crux — Climbing Gym Management Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -19,6 +19,7 @@
     "multer": "^2.1.1",
     "nodemailer": "^6.10.1",
     "qrcode": "^1.5.4",
+    "stripe": "^20.4.1",
     "uuid": "^9.0.1"
   }
 }

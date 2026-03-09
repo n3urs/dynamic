@@ -98,12 +98,12 @@ Steps per gym onboarding:
 - **Platform name:** Crux
 - **Domain idea:** `cruxgym.co.uk` or `cruxgym.co.uk` or `cruxgym.io`
 - **Logo:** Needs designing — clean, modern, could reference movement/climbing without being literal
-- **Gym co-branding:** "Crux | BoulderRyn" style — gym name follows the pipe
+- **Gym co-branding:** "Crux | GymName" style — gym name follows the pipe
 - **Colour scheme:** Current navy/blue can stay for staff app; each gym can customise their member-facing portal
 
 ---
 
-## Features (Current Build — needs renaming from BoulderRyn)
+## Features
 
 Already built and working:
 - Member management + profiles (photo, warning flag, tags, comments)
@@ -122,7 +122,7 @@ Needs building for multi-tenancy:
 - [ ] Super-admin panel (Oscar can see all gyms, billing status, usage)
 - [ ] Subdomain routing (gymname.cruxgym.co.uk → correct gym instance)
 - [ ] Billing / subscription management (Stripe integration)
-- [ ] Rename all "BoulderRyn" references to "Crux"
+- [x] Renamed all BoulderRyn references to Crux
 - [ ] New logo + brand assets
 - [ ] Marketing/landing page (cruxgym.co.uk)
 - [ ] Self-serve signup flow (later)
@@ -169,4 +169,4 @@ Hosting: AWS EC2 (current) — can scale with more instances as needed
 
 ## Repo
 
-Current: https://github.com/n3urs/boulderryn (needs renaming)
+https://github.com/n3urs/cruxgym

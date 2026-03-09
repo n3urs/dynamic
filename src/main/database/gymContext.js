@@ -3,7 +3,7 @@
  * gym_id through the entire async call chain for each request.
  *
  * Usage (in middleware):
- *   gymContext.run({ gymId: 'boulderryn' }, next);
+ *   gymContext.run({ gymId: 'mygym' }, next);
  *
  * Usage (anywhere in models/routes):
  *   const { gymId } = gymContext.getStore() ?? {};

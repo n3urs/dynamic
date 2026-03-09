@@ -6,7 +6,7 @@
  *   node scripts/provision-gym.js <gym_id> [gym_name]
  *
  * Examples:
- *   node scripts/provision-gym.js boulderryn "BoulderRyn"
+ *   node scripts/provision-gym.js mygym "My Gym"
  *   node scripts/provision-gym.js climbhigh "Climb High Leeds"
  *
  * Creates:
@@ -33,7 +33,7 @@ const gymName = process.argv[3] || '';
 
 if (!gymId) {
   console.error('Usage: node scripts/provision-gym.js <gym_id> [gym_name]');
-  console.error('Example: node scripts/provision-gym.js boulderryn "BoulderRyn"');
+  console.error('Example: node scripts/provision-gym.js mygym "My Gym"');
   process.exit(1);
 }
 

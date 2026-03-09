@@ -133,7 +133,7 @@ Test data: 7 members, 2 with active passes, 3 seeded climbs, 2 seeded events.
 
 ## ✅ REBRAND COMPLETE
 
-All "BoulderRyn" references replaced with config-driven values. Logos in `src/public/assets/logos/`:
+All gym branding is config-driven per-gym. Logos in `src/public/assets/logos/`:
 - `logo-compact.svg` — sidebar (white wordmark, dark bg)
 - `logo-light.svg` — dark bg pages (first-run, register header)
 - `logo-dark.svg` — light bg pages (member portal login, privacy policy)
@@ -176,4 +176,4 @@ Per-gym DB isolation in place. Fully smoke-tested.
 
 ## Repo
 
-GitHub: https://github.com/n3urs/crux (renamed from boulderryn)
+GitHub: https://github.com/n3urs/cruxgym

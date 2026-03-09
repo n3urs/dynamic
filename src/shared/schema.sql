@@ -1,4 +1,4 @@
--- BoulderRyn Database Schema
+-- Crux Gym Management Schema
 -- SQLite
 
 PRAGMA journal_mode=WAL;
@@ -583,7 +583,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Default settings
 INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('gym_name', 'BoulderRyn'),
+  ('gym_name', 'My Gym'),
   ('peak_description', 'Monday-Sunday anytime'),
   ('off_peak_description', 'Monday-Friday 10am-4pm'),
   ('currency', 'GBP'),

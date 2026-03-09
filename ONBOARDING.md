@@ -73,4 +73,4 @@ Helper function that sets the `settingsTab` global and calls `navigateTo('staff'
 - All checks are read-only queries against existing tables — no schema migrations required
 - The `onboarding_complete` key in the `settings` table is created on first dismiss via `INSERT OR REPLACE`
 - The waiver `updated_at` fix is a one-line addition to the PUT handler — it only starts tracking edits from this point forward; existing gyms with no waiver edits will show `waiver: false` until they save any change to the waiver template
-- For Boulderryn's existing DB: `gym_details` and `pass_types` are already true; `waiver` and `staff` are false (no extra staff beyond the owner, no waiver edits since the fix)
+- For the test gym DB: `gym_details` and `pass_types` are already true; `waiver` and `staff` are false (no extra staff beyond the owner, no waiver edits since the fix)

@@ -88,7 +88,7 @@ app.use((req, res, next) => {
       });
     }
   } else {
-    // Production — extract subdomain: boulderryn.cruxgym.co.uk → boulderryn
+    // Production — extract subdomain: mygym.cruxgym.co.uk → mygym
     gymId = hostname.split('.')[0];
     if (!gymId || !/^[a-z0-9-]{2,30}$/.test(gymId)) {
       return res.status(400).json({ error: 'Invalid gym identifier in hostname.' });
