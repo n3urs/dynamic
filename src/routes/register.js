@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const Member = require('../main/models/member');
 const Waiver = require('../main/models/waiver');
+const { getDb } = require('../main/database/db');
 
 router.post('/register', (req, res, next) => {
   try {
@@ -98,6 +99,35 @@ router.post('/register', (req, res, next) => {
       Member.sendQrEmail(member.id).catch(err => {
         console.error('Failed to send QR email:', err.message);
       });
+
+      // Send member portal invite
+      try {
+        const nodemailer = require('nodemailer');
+        const SMTP_USER = process.env.SMTP_USER || 'cruxgymhq@gmail.com';
+        const SMTP_PASS = process.env.SMTP_PASS || 'tzrhwxyfpjgnfraz';
+        const SMTP_FROM = process.env.SMTP_FROM || 'Crux <hello@cruxgym.co.uk>';
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: SMTP_USER, pass: SMTP_PASS } });
+        const gymSettings = getDb().prepare("SELECT value FROM settings WHERE key = 'gym_name'").get();
+        const gymName = gymSettings?.value || 'the gym';
+        const host = req.get('host') || 'localhost:8080';
+        const protocol = req.protocol || 'https';
+        const portalUrl = `${protocol}://${host}/me`;
+        transporter.sendMail({
+          from: SMTP_FROM,
+          to: member.email,
+          subject: `Your ${gymName} member portal`,
+          html: `
+            <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#fff">
+              <h2 style="color:#1E3A5F;margin:0 0 8px">Hi ${member.first_name},</h2>
+              <p style="color:#6B7280;margin:0 0 24px">Welcome to ${gymName}! You now have access to your personal member portal. Log in to see your QR check-in code, track your climbs on the wall map, and read gym updates.</p>
+              <a href="${portalUrl}" style="display:inline-block;background:#1E3A5F;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:16px;margin:0 0 24px">Open Member Portal</a>
+              <p style="color:#9CA3AF;font-size:13px;margin:0">Use your email address (${member.email}) to log in — we'll send you a code each time.</p>
+            </div>
+          `,
+        }).catch(err => console.warn('[register] portal invite failed:', err.message));
+      } catch (err) {
+        console.warn('[register] portal invite error:', err.message);
+      }
     }
 
     res.json({

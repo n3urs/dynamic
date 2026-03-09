@@ -1331,7 +1331,7 @@ function quickCheckIn(memberId) {
 // Navigation
 // ============================================================
 
-const pages = ['dashboard', 'checkin', 'members', 'pos', 'events', 'routes', 'analytics', 'staff'];
+const pages = ['dashboard', 'checkin', 'members', 'pos', 'events', 'routes', 'analytics', 'noticeboard', 'staff'];
 
 function navigateTo(pageName) {
   const navLink = document.querySelector(`[data-page="${pageName}"]`);
@@ -1402,6 +1402,7 @@ async function loadPage(pageName) {
     case 'events': return loadEvents();
     case 'routes': return loadRoutes();
     case 'analytics': return loadAnalytics();
+    case 'noticeboard': return loadNoticeboardPage();
     case 'staff': return loadStaff();
   }
 }
@@ -7081,6 +7082,98 @@ async function loadGymName() {
   } catch (e) { /* settings not critical for startup */ }
 }
 loadGymName();
+
+// ============================================================
+// Noticeboard
+// ============================================================
+
+async function loadNoticeboardPage() {
+  const el = document.getElementById('page-noticeboard');
+  if (!el) return;
+
+  el.innerHTML = `<div class="flex items-center justify-center py-12 text-gray-400 text-sm">Loading...</div>`;
+
+  let posts = [];
+  try {
+    const res = await fetch('/api/me/noticeboard', {
+      headers: { 'Authorization': 'Bearer ' + (window.currentStaff?.token || '') }
+    });
+    if (res.ok) posts = await res.json();
+  } catch {}
+
+  el.innerHTML = `
+    <div class="max-w-2xl mx-auto">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Noticeboard</h1>
+      </div>
+
+      <!-- New post form -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h2 class="font-semibold text-gray-900 mb-4">New Post</h2>
+        <div class="space-y-3">
+          <input type="text" id="nb-title" placeholder="Title" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:outline-none">
+          <textarea id="nb-body" rows="3" placeholder="Message (optional)" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:outline-none resize-none"></textarea>
+          <input type="url" id="nb-image" placeholder="Image URL (optional)" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:outline-none">
+          <button onclick="submitNoticeboardPost()" class="px-4 py-2 bg-[#1E3A5F] text-white rounded-lg text-sm font-semibold hover:bg-[#2A4D7A] transition">Post</button>
+        </div>
+      </div>
+
+      <!-- Posts list -->
+      <div class="space-y-3" id="nb-posts-list">
+        ${posts.length === 0 ? '<p class="text-gray-400 text-sm text-center py-6">No posts yet</p>' : posts.map(p => `
+          <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900">${p.title}</h3>
+                ${p.body ? `<p class="text-sm text-gray-600 mt-1 whitespace-pre-wrap">${p.body}</p>` : ''}
+                ${p.image_url ? `<img src="${p.image_url}" class="mt-2 rounded-lg max-h-40 object-cover">` : ''}
+                <p class="text-xs text-gray-400 mt-2">${p.posted_by || 'Staff'} &middot; ${new Date(p.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</p>
+              </div>
+              <button onclick="deleteNoticeboardPost('${p.id}')" class="text-red-400 hover:text-red-600 text-xs flex-shrink-0">Delete</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function submitNoticeboardPost() {
+  const title = document.getElementById('nb-title')?.value.trim();
+  const body = document.getElementById('nb-body')?.value.trim();
+  const imageUrl = document.getElementById('nb-image')?.value.trim();
+  if (!title) { showToast('Title is required', 'error'); return; }
+
+  try {
+    const res = await fetch('/api/me/noticeboard', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-staff-id': window.currentStaff?.id || '',
+      },
+      body: JSON.stringify({ title, body: body || null, image_url: imageUrl || null }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+    showToast('Post published', 'success');
+    loadNoticeboardPage();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
+async function deleteNoticeboardPost(id) {
+  if (!confirm('Delete this post?')) return;
+  try {
+    await fetch('/api/me/noticeboard/' + id, {
+      method: 'DELETE',
+      headers: { 'x-staff-id': window.currentStaff?.id || '' },
+    });
+    showToast('Post deleted', 'success');
+    loadNoticeboardPage();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
 
 // Init — no login required, check first run then load dashboard
 restoreSession();

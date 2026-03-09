@@ -45,10 +45,12 @@
           <div class="progress-dot pending w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold" data-step="3">3</div>
           <div class="flex-1 h-1 bg-gray-200 rounded"><div class="progress-bar h-full bg-blue-500 rounded transition-all" style="width:0%"></div></div>
           <div class="progress-dot pending w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold" data-step="4">4</div>
+          <div class="flex-1 h-1 bg-gray-200 rounded"><div class="progress-bar h-full bg-blue-500 rounded transition-all" style="width:0%"></div></div>
+          <div class="progress-dot pending w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold" data-step="5">5</div>
         </div>
       </div>
       <div class="flex justify-between mt-1 text-[10px] sm:text-xs text-gray-400">
-        <span>Video</span><span>Details</span><span>Waiver</span><span>Sign</span>
+        <span>Video</span><span>Type</span><span>Details</span><span>Waiver</span><span>Sign</span>
       </div>
     </div>
   </div>
@@ -86,8 +88,17 @@
       </button>
     </div>
 
-    <!-- STEP 2: Personal Details -->
+    <!-- STEP 2: Waiver Type -->
     <div class="step" id="step-2">
+      <h2 class="text-xl font-bold text-gray-900 mb-2">Who is registering?</h2>
+      <p class="text-gray-500 text-sm mb-6">Select the waiver type that applies.</p>
+      <div id="waiver-type-buttons" class="space-y-3">
+        <!-- Populated dynamically from available waivers -->
+      </div>
+    </div>
+
+    <!-- STEP 3: Personal Details -->
+    <div class="step" id="step-3">
       <h2 class="text-xl font-bold text-gray-900 mb-2">Personal Details</h2>
       <p class="text-gray-500 text-sm mb-4">Fields marked with * are required.</p>
 
@@ -197,13 +208,13 @@
       <div id="step2-error" class="text-red-500 text-sm mt-3 hidden"></div>
 
       <div class="flex gap-3 mt-6">
-        <button onclick="goToStep(1)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
-        <button onclick="validateStep2()" class="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition text-sm">Continue</button>
+        <button onclick="goToStep(2)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
+        <button onclick="validateStep3()" class="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition text-sm">Continue</button>
       </div>
     </div>
 
-    <!-- STEP 3: Waiver Agreement -->
-    <div class="step" id="step-3">
+    <!-- STEP 4: Waiver Agreement -->
+    <div class="step" id="step-4">
       <h2 class="text-xl font-bold text-gray-900 mb-2">Participation Agreement</h2>
       <p class="text-gray-500 text-sm mb-4">Please read carefully and confirm each statement.</p>
 
@@ -330,16 +341,16 @@
         </label>
       </div>
 
-      <div id="step3-error" class="text-red-500 text-sm mt-3 hidden"></div>
+      <div id="step4-waiver-error" class="text-red-500 text-sm mt-3 hidden"></div>
 
       <div class="flex gap-3 mt-6">
-        <button onclick="goToStep(2)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
-        <button onclick="validateStep3()" class="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition text-sm">Continue to Sign</button>
+        <button onclick="goToStep(3)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
+        <button onclick="validateStep4()" class="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition text-sm">Continue to Sign</button>
       </div>
     </div>
 
-    <!-- STEP 4: Signature + Submit -->
-    <div class="step" id="step-4">
+    <!-- STEP 5: Signature + Submit -->
+    <div class="step" id="step-5">
       <h2 class="text-xl font-bold text-gray-900 mb-2">Sign & Submit</h2>
       <p class="text-gray-500 text-sm mb-4">Please sign below to complete your registration.</p>
 
@@ -381,10 +392,10 @@
         </label>
       </div>
 
-      <div id="step4-error" class="text-red-500 text-sm mt-3 hidden"></div>
+      <div id="step5-error" class="text-red-500 text-sm mt-3 hidden"></div>
 
       <div class="flex gap-3 mt-6">
-        <button onclick="goToStep(3)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
+        <button onclick="goToStep(4)" class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-sm">Back</button>
         <button onclick="submitRegistration()" id="btn-submit" class="flex-1 py-3.5 bg-[#1e3a5f] text-white font-bold rounded-xl hover:bg-[#2a4f7f] transition text-sm">
           Submit Registration
         </button>
@@ -452,6 +463,8 @@
         }
         // Render adult waiver by default (full render including confirmation questions)
         renderWaiverStep3(false, true);
+        // Populate waiver type selection buttons
+        renderWaiverTypeButtons();
       } catch (e) {}
     })();
 
@@ -525,10 +538,57 @@
     }
 
     // =============================================
+    // Step 2: Waiver Type Selection
+    // =============================================
+    function renderWaiverTypeButtons() {
+      const container = document.getElementById('waiver-type-buttons');
+      if (!container) return;
+      const buttons = [];
+      if (waiverTemplates.adult) {
+        buttons.push({ type: 'adult', label: 'Adult Waiver', sub: 'For climbers aged 18 and over' });
+      }
+      if (waiverTemplates.minor) {
+        buttons.push({ type: 'minor', label: 'Minor Waiver', sub: 'For climbers under 18 (parent/guardian must be present)' });
+      }
+      if (buttons.length === 0) {
+        // fallback if no templates loaded
+        buttons.push({ type: 'adult', label: 'Adult Waiver', sub: 'For climbers aged 18 and over' });
+        buttons.push({ type: 'minor', label: 'Minor Waiver', sub: 'For climbers under 18' });
+      }
+      container.innerHTML = buttons.map(b => `
+        <button onclick="selectWaiverType('${b.type}')" class="w-full text-left p-4 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition group">
+          <div class="font-semibold text-gray-900 group-hover:text-blue-700">${b.label}</div>
+          <div class="text-sm text-gray-500 mt-0.5">${b.sub}</div>
+        </button>
+      `).join('');
+    }
+
+    function selectWaiverType(type) {
+      selectedWaiverType = type;
+      if (type === 'minor') {
+        const over18 = document.getElementById('over18-check');
+        if (over18) over18.checked = false;
+        const minorSection = document.getElementById('minor-section');
+        if (minorSection) minorSection.classList.remove('hidden');
+        isMinor = true;
+        renderWaiverStep3(true, false);
+      } else {
+        const over18 = document.getElementById('over18-check');
+        if (over18) over18.checked = true;
+        const minorSection = document.getElementById('minor-section');
+        if (minorSection) minorSection.classList.add('hidden');
+        isMinor = false;
+        renderWaiverStep3(false, false);
+      }
+      goToStep(3);
+    }
+
+    // =============================================
     // State
     // =============================================
     let currentStep = 1;
     let isMinor = false;
+    let selectedWaiverType = 'adult';
     const signatures = {};
 
     // =============================================
@@ -545,8 +605,8 @@
       updateProgress();
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Init signature canvas when entering step 4
-      if (step === 4) {
+      // Init signature canvas when entering step 5
+      if (step === 5) {
         setTimeout(() => {
           initSignatureCanvas('sig-canvas');
           if (isMinor) {
@@ -643,13 +703,13 @@
     document.getElementById('staff-skip-btn').addEventListener('click', function() {
       videoEnded = true;
       killVideo();
-      goToStep(2);
+      goToStep(2); // goes to waiver type selection
     });
 
     // =============================================
-    // Step 2: Validation
+    // Step 3: Personal Details Validation
     // =============================================
-    function validateStep2() {
+    function validateStep3() {
       const fields = {
         'First Name': document.getElementById('reg-first-name').value.trim(),
         'Last Name': document.getElementById('reg-last-name').value.trim(),
@@ -698,11 +758,11 @@
       }
 
       errEl.classList.add('hidden');
-      goToStep(3);
+      goToStep(4);
     }
 
     // =============================================
-    // Step 3: Waiver + Minor detection
+    // Step 4: Waiver + Minor detection
     // =============================================
     document.getElementById('over18-check').addEventListener('change', function() {
       isMinor = !this.checked;
@@ -710,8 +770,8 @@
       renderWaiverStep3(isMinor, false);
     });
 
-    function validateStep3() {
-      const errEl = document.getElementById('step3-error');
+    function validateStep4() {
+      const errEl = document.getElementById('step4-waiver-error');
       const checks = document.querySelectorAll('.waiver-check');
       let allChecked = true;
 
@@ -737,7 +797,7 @@
       }
 
       errEl.classList.add('hidden');
-      goToStep(4);
+      goToStep(5);
     }
 
     // =============================================
@@ -835,7 +895,7 @@
     // Submit
     // =============================================
     async function submitRegistration() {
-      const errEl = document.getElementById('step4-error');
+      const errEl = document.getElementById('step5-error');
       const btn = document.getElementById('btn-submit');
 
       // Validate consent checkboxes
