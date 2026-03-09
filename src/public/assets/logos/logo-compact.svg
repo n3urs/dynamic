@@ -1,4 +1,4 @@
-<svg width="220" height="44" viewBox="0 0 220 44" xmlns="http://www.w3.org/2000/svg">
+<svg width="160" height="44" viewBox="0 0 160 44" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="chevGrad" x1="0%" y1="100%" x2="60%" y2="0%">
       <stop offset="0%" style="stop-color:#2563EB"/>
@@ -10,5 +10,5 @@
   <!-- Front chevron -->
   <polygon points="20,40 34,6 48,40 41,40 34,20 27,40" fill="url(#chevGrad)"/>
   <!-- Wordmark -->
-  <text x="62" y="28" font-family="-apple-system,Helvetica Neue,Arial,sans-serif" font-weight="800" font-size="20" fill="white" letter-spacing="1">DYNAMIC</text>
+  <text x="62" y="28" font-family="-apple-system,Helvetica Neue,Arial,sans-serif" font-weight="800" font-size="20" fill="white" letter-spacing="1">CRUX</text>
 </svg>

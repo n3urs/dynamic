@@ -1,4 +1,4 @@
-# Dynamic — Development Reference
+# Crux — Development Reference
 
 > Read this at the start of every session. See PRODUCT.md for business/vision context.
 > Last updated: 2026-03-08
@@ -7,7 +7,7 @@
 
 ## What This Is
 
-**Dynamic** — a multi-tenant SaaS climbing gym management platform.
+**Crux** — a multi-tenant SaaS climbing gym management platform.
 UK-first, bouldering-focused. Being built to sell to multiple gyms via subscription.
 
 ---
@@ -157,7 +157,7 @@ Per-gym DB isolation in place. Fully smoke-tested.
 
 ## 🏗️ Next Milestones
 
-1. **Subdomain routing** — nginx config for `*.dynamicgym.co.uk` → Node server
+1. **Subdomain routing** — nginx config for `*.cruxgym.co.uk` → Node server
 2. **Super-admin panel** — view all gyms, status, usage
 3. **Stripe billing** — subscription management, webhook for active/inactive
 4. **Gym signup flow** — self-service provisioning
@@ -166,7 +166,7 @@ Per-gym DB isolation in place. Fully smoke-tested.
 
 ## Security (pre-launch checklist)
 
-- [ ] Set `JWT_SECRET` in `/etc/dynamic.env`
+- [ ] Set `JWT_SECRET` in `/etc/crux.env`
 - [x] `helmet` middleware — ✅ done
 - [x] Rate limit auth endpoints — ✅ done
 - [ ] `chmod 600 data/gyms/*/gym.db`
@@ -176,4 +176,4 @@ Per-gym DB isolation in place. Fully smoke-tested.
 
 ## Repo
 
-GitHub: https://github.com/n3urs/dynamic (renamed from boulderryn)
+GitHub: https://github.com/n3urs/crux (renamed from boulderryn)

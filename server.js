@@ -1,5 +1,5 @@
 /**
- * Dynamic — Express Web Server
+ * Crux — Express Web Server
  */
 
 const express = require('express');
@@ -17,7 +17,7 @@ const climberRoutes = require('./src/routes/climber');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const DATA_ROOT = process.env.DYNAMIC_DATA_DIR || process.env.BOULDERRYN_DATA_DIR || path.join(__dirname, 'data');
+const DATA_ROOT = process.env.CRUX_DATA_DIR || process.env.BOULDERRYN_DATA_DIR || path.join(__dirname, 'data');
 
 // ── Security ───────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'blob:'],
       frameSrc: ['www.youtube.com', 'youtube.com'],
       connectSrc: ["'self'"],
+      scriptSrcAttr: ["'unsafe-inline'"], // allow onclick= handlers throughout the app
     },
   },
   crossOriginEmbedderPolicy: false, // needed for YouTube iframes
@@ -71,11 +72,14 @@ function detectFirstGym() {
 app.use((req, res, next) => {
   const hostname = req.hostname || '';
   const isLocal = ['localhost', '127.0.0.1', '::1'].includes(hostname);
-  const isDynamic = hostname.endsWith('.dynamicgym.co.uk') || hostname.endsWith('.dynamicgym.io');
+  const isCrux = hostname.endsWith('.cruxgym.co.uk') || hostname.endsWith('.cruxgym.io');
 
   let gymId;
 
-  if (isLocal || (!isDynamic && !hostname.includes('.'))) {
+  // Also treat tunnel/proxy domains as local dev (trycloudflare.com, ngrok, etc.)
+  const isTunnel = !isCrux && process.env.DEFAULT_GYM_ID;
+
+  if (isLocal || isTunnel || (!isCrux && !hostname.includes('.'))) {
     // Local dev — use DEFAULT_GYM_ID or the first gym on disk
     gymId = process.env.DEFAULT_GYM_ID || detectFirstGym();
     if (!gymId) {
@@ -84,7 +88,7 @@ app.use((req, res, next) => {
       });
     }
   } else {
-    // Production — extract subdomain: boulderryn.dynamicgym.co.uk → boulderryn
+    // Production — extract subdomain: boulderryn.cruxgym.co.uk → boulderryn
     gymId = hostname.split('.')[0];
     if (!gymId || !/^[a-z0-9-]{2,30}$/.test(gymId)) {
       return res.status(400).json({ error: 'Invalid gym identifier in hostname.' });
@@ -171,7 +175,7 @@ app.listen(PORT, () => {
     }
   }
 
-  console.log(`Dynamic running at http://localhost:${PORT}`);
+  console.log(`Crux running at http://localhost:${PORT}`);
 });
 
 // Graceful shutdown

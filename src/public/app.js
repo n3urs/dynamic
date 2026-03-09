@@ -1,5 +1,5 @@
 /**
- * Dynamic — Frontend Application (Web Version)
+ * Crux — Frontend Application (Web Version)
  * Complete overhaul matching BETA gym software
  */
 
@@ -234,7 +234,7 @@ function showFirstRunSetup() {
   const container = document.getElementById('first-run-container');
   container.innerHTML = `
     <div class="text-center mb-8">
-      <img src="/assets/logos/logo-light.svg" alt="Dynamic" class="h-12 mx-auto mb-2">
+      <img src="/assets/logos/logo-light.svg" alt="Crux" class="h-12 mx-auto mb-2">
       <p class="text-slate-400 mt-2">First Time Setup</p>
     </div>
     <div class="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
@@ -5496,7 +5496,7 @@ shakeStyle.textContent = `
 document.head.appendChild(shakeStyle);
 
 // Gym name — loaded from settings, used throughout the UI
-window.gymName = 'Dynamic';
+window.gymName = 'Crux';
 (async function loadGymName() {
   try {
     const settings = await api('GET', '/api/settings');
@@ -5504,7 +5504,7 @@ window.gymName = 'Dynamic';
       window.gymName = settings.gym_name;
       const sidebarFooter = document.getElementById('sidebar-gym-footer');
       if (sidebarFooter) sidebarFooter.textContent = settings.gym_name;
-      document.title = settings.gym_name + ' · Dynamic';
+      document.title = settings.gym_name + ' · Crux';
     }
   } catch (e) { /* settings not critical for startup */ }
 })();

@@ -1,14 +1,14 @@
 {
-  "name": "dynamic",
+  "name": "crux",
   "version": "0.2.0",
-  "description": "Dynamic — Climbing Gym Management Platform",
+  "description": "Crux \u2014 Climbing Gym Management Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "init-db": "node src/main/database/init.js"
   },
-  "author": "Dynamic",
+  "author": "Crux",
   "license": "PRIVATE",
   "dependencies": {
     "better-sqlite3": "^11.10.0",

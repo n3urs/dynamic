@@ -1,4 +1,4 @@
-# Product Vision — Dynamic
+# Product Vision — Crux
 
 > Last updated: 2026-03-08
 
@@ -6,9 +6,9 @@
 
 ## What We're Building
 
-**Dynamic** — a multi-tenant SaaS climbing gym management platform. Affordable, modern, built specifically for bouldering gyms. UK-first, bouldering-focused to start, expandable to other climbing disciplines later.
+**Crux** — a multi-tenant SaaS climbing gym management platform. Affordable, modern, built specifically for bouldering gyms. UK-first, bouldering-focused to start, expandable to other climbing disciplines later.
 
-**Tagline direction:** "Dynamic | [Gym Name]" — each gym is co-branded under the Dynamic name.
+**Tagline direction:** "Crux | [Gym Name]" — each gym is co-branded under the Crux name.
 
 ---
 
@@ -56,10 +56,10 @@ UK has ~200+ climbing walls. Bouldering-only venues are the fastest growing segm
 
 Each gym gets:
 - Isolated data — members, passes, products, staff, settings, transactions
-- Their own subdomain: `gymname.usedynamic.com` (or similar)
+- Their own subdomain: `gymname.cruxgym.co.uk` (or similar)
 - Their own branding: logo, gym name, colour scheme configurable in settings
 - Separate staff accounts — no cross-gym visibility
-- Co-branding: "Dynamic | [Gym Name]" — not white-labelled, our brand stays visible
+- Co-branding: "Crux | [Gym Name]" — not white-labelled, our brand stays visible
 
 Architecture decision needed: **one SQLite DB per gym** (simpler isolation, easier backups) vs **shared Postgres with gym_id** (better for scale). Current codebase uses SQLite — likely move to per-gym DB initially.
 
@@ -86,7 +86,7 @@ Steps per gym onboarding:
 
 ## Support Model (Bat Computer)
 
-- Dedicated support email e.g. `support@usedynamic.com`
+- Dedicated support email e.g. `support@cruxgym.co.uk`
 - Bat Computer monitors inbox, handles common queries (how to add a pass type, how to reset a PIN, etc.)
 - Escalation to Oscar for: billing disputes, technical bugs, anything needing code changes
 - Outreach: Bat Computer can research UK climbing gyms, draft cold emails, send on Oscar's behalf (with approval workflow or autonomous for low-risk sends)
@@ -95,10 +95,10 @@ Steps per gym onboarding:
 
 ## Branding
 
-- **Platform name:** Dynamic
-- **Domain idea:** `usedynamic.com` or `getdynamic.app` or `dynamicgym.io`
+- **Platform name:** Crux
+- **Domain idea:** `cruxgym.co.uk` or `cruxgym.co.uk` or `cruxgym.io`
 - **Logo:** Needs designing — clean, modern, could reference movement/climbing without being literal
-- **Gym co-branding:** "Dynamic | BoulderRyn" style — gym name follows the pipe
+- **Gym co-branding:** "Crux | BoulderRyn" style — gym name follows the pipe
 - **Colour scheme:** Current navy/blue can stay for staff app; each gym can customise their member-facing portal
 
 ---
@@ -120,11 +120,11 @@ Already built and working:
 Needs building for multi-tenancy:
 - [ ] Gym provisioning system (create new gym = new DB + config)
 - [ ] Super-admin panel (Oscar can see all gyms, billing status, usage)
-- [ ] Subdomain routing (gymname.usedynamic.com → correct gym instance)
+- [ ] Subdomain routing (gymname.cruxgym.co.uk → correct gym instance)
 - [ ] Billing / subscription management (Stripe integration)
-- [ ] Rename all "BoulderRyn" references to "Dynamic"
+- [ ] Rename all "BoulderRyn" references to "Crux"
 - [ ] New logo + brand assets
-- [ ] Marketing/landing page (usedynamic.com)
+- [ ] Marketing/landing page (cruxgym.co.uk)
 - [ ] Self-serve signup flow (later)
 
 ---
@@ -143,25 +143,25 @@ Hosting: AWS EC2 (current) — can scale with more instances as needed
 - **Onboarding:** Manual for first 5–10 gyms, self-serve later
 - **Billing:** Stripe (to be integrated)
 - **Priority:** Multi-tenancy + rebrand before more features
-- **Branding:** "Dynamic | [Gym Name]" — not white-labelled
+- **Branding:** "Crux | [Gym Name]" — not white-labelled
 
 ## Domain Availability (checked 2026-03-08)
 
-- `usedynamic.com` — TAKEN
-- `getdynamic.app` — TAKEN
-- `dynamicgym.io` — possibly available
-- `dynamicgym.co.uk` — possibly available
-- `dynamicclimb.com` — possibly available
-- `dynamicclimb.co.uk` — possibly available
-- `dynamicwall.co.uk` — possibly available
-- `climbdynamic.com` — possibly available
-- `trydynamic.app` — possibly available
+- `cruxgym.co.uk` — TAKEN
+- `cruxgym.co.uk` — TAKEN
+- `cruxgym.io` — possibly available
+- `cruxgym.co.uk` — possibly available
+- `cruxclimb.com` — possibly available
+- `cruxclimb.co.uk` — possibly available
+- `cruxwall.co.uk` — possibly available
+- `climbcrux.com` — possibly available
+- `trycrux.app` — possibly available
 
-**Recommendation:** `dynamicgym.co.uk` + `dynamicgym.io` — clean, clear, UK-native. Oscar to register.
+**Recommendation:** `cruxgym.co.uk` + `cruxgym.io` — clean, clear, UK-native. Oscar to register.
 
 ## Open Questions
 
-- [ ] Oscar to register domain (recommend dynamicgym.co.uk + .io pair)
+- [ ] Oscar to register domain (recommend cruxgym.co.uk + .io pair)
 - [ ] Logo design
 - [ ] Legal: T&Cs, privacy policy, data processing agreement (GDPR for each gym's member data)
 
