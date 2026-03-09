@@ -2274,6 +2274,8 @@ async function openMemberProfile(memberId) {
                 <button onclick="showMemberQrCode('${member.id}', '${fullName.replace(/'/g, "\\'")}')" class="btn btn-secondary w-full btn-sm">View QR Code</button>` : ''}
               ${member.email ? `
                 <button onclick="emailMemberQrCode('${member.id}')" class="btn btn-secondary w-full btn-sm">Email QR Code</button>` : ''}
+              ${member.email ? `
+                <button onclick="sendPortalInvite('${member.id}')" class="btn btn-secondary w-full btn-sm">Send Portal Link</button>` : ''}
             </div>
 
             <!-- Collapsible: Comments -->
@@ -3562,6 +3564,15 @@ async function emailMemberQrCode(memberId) {
     }
   } catch (e) {
     showToast('Email failed: ' + e.message, 'error');
+  }
+}
+
+async function sendPortalInvite(memberId) {
+  try {
+    await api('POST', `/api/me/invite/${memberId}`);
+    showToast('Portal link sent to member\'s email', 'success');
+  } catch (err) {
+    showToast('Failed to send: ' + err.message, 'error');
   }
 }
 

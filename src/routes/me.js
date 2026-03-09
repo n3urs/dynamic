@@ -251,4 +251,70 @@ router.delete('/noticeboard/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── POST /me/invite/:memberId (staff sends portal link to member) ──────────
+
+router.post('/invite/:memberId', (req, res) => {
+  // Require staff session
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorised' });
+
+  const db = getDb();
+  const member = db.prepare('SELECT id, first_name, last_name, email FROM members WHERE id = ?').get(req.params.memberId);
+  if (!member) return res.status(404).json({ error: 'Member not found' });
+  if (!member.email) return res.status(400).json({ error: 'Member has no email address on file' });
+
+  const gymSettings = db.prepare("SELECT key, value FROM settings WHERE key IN ('gym_name')").all();
+  const gymName = gymSettings.find(s => s.key === 'gym_name')?.value || 'the gym';
+
+  // Get the host from request to build the portal URL
+  const host = req.get('host') || 'localhost:8080';
+  const protocol = req.protocol || 'https';
+  const portalUrl = `${protocol}://${host}/me`;
+
+  transporter.sendMail({
+    from: SMTP_FROM,
+    to: member.email,
+    subject: `Your ${gymName} member portal`,
+    html: `
+      <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#fff">
+        <h2 style="color:#1E3A5F;margin:0 0 8px">Hi ${member.first_name},</h2>
+        <p style="color:#6B7280;margin:0 0 24px">You now have access to your personal member portal for ${gymName}. Log in to view your QR check-in code, track your climbs, and read gym updates.</p>
+        <a href="${portalUrl}" style="display:inline-block;background:#1E3A5F;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:16px;margin:0 0 24px">Open Member Portal</a>
+        <p style="color:#9CA3AF;font-size:13px;margin:0">Or copy this link: ${portalUrl}</p>
+        <p style="color:#9CA3AF;font-size:13px;margin:16px 0 0">Use your email address (${member.email}) to log in — we'll send you a code each time.</p>
+      </div>
+    `,
+  }).catch(err => console.warn('[me/invite] email failed:', err.message));
+
+  res.json({ ok: true });
+});
+
+// ── GET /me/stats ─────────────────────────────────────────────────────────
+
+router.get('/stats', requireMemberAuth, (req, res) => {
+  const db = getDb();
+
+  // Sends by grade
+  const sendsByGrade = db.prepare(`
+    SELECT c.grade, COUNT(*) as count
+    FROM member_sends ms
+    JOIN climbs c ON ms.climb_id = c.id
+    WHERE ms.member_id = ?
+    GROUP BY c.grade
+    ORDER BY c.grade
+  `).all(req.member.memberId);
+
+  // Total sends
+  const totalSends = db.prepare('SELECT COUNT(*) as c FROM member_sends WHERE member_id = ?').get(req.member.memberId);
+
+  // Hardest grade sent (order by grade difficulty)
+  const gradeOrder = ['VB','V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12'];
+  const sentGrades = sendsByGrade.map(s => s.grade);
+  const hardest = sentGrades.reduce((best, g) => {
+    return gradeOrder.indexOf(g) > gradeOrder.indexOf(best) ? g : best;
+  }, sentGrades[0] || null);
+
+  res.json({ sendsByGrade, totalSends: totalSends.c, hardestGrade: hardest });
+});
+
 module.exports = router;

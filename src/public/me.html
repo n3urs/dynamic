@@ -95,6 +95,29 @@
           <p class="font-semibold text-orange-800">No active pass</p>
           <p class="text-orange-600 text-sm mt-1">Visit the front desk to purchase a pass.</p>
         </div>
+
+        <!-- Stats -->
+        <div id="home-stats" class="hidden">
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="bg-white rounded-xl border border-gray-100 p-3 text-center">
+              <p id="stat-total" class="text-2xl font-bold text-gray-900">—</p>
+              <p class="text-xs text-gray-400 mt-0.5">Total Sends</p>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-3 text-center">
+              <p id="stat-hardest" class="text-2xl font-bold text-gray-900">—</p>
+              <p class="text-xs text-gray-400 mt-0.5">Hardest</p>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-100 p-3 text-center">
+              <p id="stat-grades" class="text-2xl font-bold text-gray-900">—</p>
+              <p class="text-xs text-gray-400 mt-0.5">Grades</p>
+            </div>
+          </div>
+          <!-- Grade pyramid -->
+          <div class="bg-white rounded-xl border border-gray-100 p-4 mb-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Grade Breakdown</p>
+            <div id="grade-pyramid" class="space-y-1.5"></div>
+          </div>
+        </div>
       </div>
     </div>
 

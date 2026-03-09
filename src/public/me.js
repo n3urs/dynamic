@@ -147,9 +147,43 @@ async function loadHome() {
     } else {
       document.getElementById('home-no-pass').classList.remove('hidden');
     }
+    // Load stats
+    loadStats();
   } catch (err) {
     if (err.message === 'Unauthorised' || err.message.includes('expired')) logout();
   }
+}
+
+async function loadStats() {
+  try {
+    const { sendsByGrade, totalSends, hardestGrade } = await meApi('GET', '/stats');
+    if (totalSends === 0) return;
+
+    document.getElementById('home-stats').classList.remove('hidden');
+    document.getElementById('stat-total').textContent = totalSends;
+    document.getElementById('stat-hardest').textContent = hardestGrade || '—';
+    document.getElementById('stat-grades').textContent = sendsByGrade.length;
+
+    const GRADE_ORDER = ['VB','V0','V1','V2','V3','V4','V5','V6','V7','V8','V9'];
+    const maxCount = Math.max(...sendsByGrade.map(s => s.count), 1);
+    const pyramid = document.getElementById('grade-pyramid');
+    const gradeMap = Object.fromEntries(sendsByGrade.map(s => [s.grade, s.count]));
+
+    pyramid.innerHTML = GRADE_ORDER.filter(g => gradeMap[g]).map(g => {
+      const count = gradeMap[g] || 0;
+      const pct = Math.round((count / maxCount) * 100);
+      const fill = GRADE_COLOURS[g] || '#6B7280';
+      return `
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold w-6 text-right" style="color:${fill}">${g}</span>
+          <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+            <div style="width:${pct}%;background:${fill};height:100%;border-radius:9999px;transition:width 0.5s ease"></div>
+          </div>
+          <span class="text-xs text-gray-500 w-4">${count}</span>
+        </div>
+      `;
+    }).join('');
+  } catch {}
 }
 
 function showQRFullscreen() {
