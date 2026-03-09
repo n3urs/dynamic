@@ -119,6 +119,29 @@ function runMigrations(db) {
     created_at TEXT DEFAULT (datetime('now'))
   )`);
   tryAdd("INSERT OR IGNORE INTO settings (key, value) VALUES ('setup_complete', '0')");
+  tryAdd(`CREATE TABLE IF NOT EXISTS member_otp_tokens (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  tryAdd(`CREATE TABLE IF NOT EXISTS member_sends (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    climb_id TEXT NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
+    sent_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(member_id, climb_id)
+  )`);
+  tryAdd(`CREATE TABLE IF NOT EXISTS noticeboard (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT,
+    image_url TEXT,
+    created_by TEXT REFERENCES staff(id),
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
 }
 
 /**

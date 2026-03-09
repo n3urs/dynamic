@@ -624,3 +624,33 @@ INSERT OR IGNORE INTO product_categories (id, name, icon, sort_order) VALUES
   ('cat_membership', 'Membership', '💳', 7),
   ('cat_prepaid', 'Prepaid', '🎫', 8),
   ('cat_products', 'Products', '🧗', 9);
+
+-- ============================================================
+-- MEMBER PORTAL
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS member_otp_tokens (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS member_sends (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  climb_id TEXT NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
+  sent_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(member_id, climb_id)
+);
+
+CREATE TABLE IF NOT EXISTS noticeboard (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT,
+  image_url TEXT,
+  created_by TEXT REFERENCES staff(id),
+  created_at TEXT DEFAULT (datetime('now'))
+);

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1E3A5F">
+  <title>Member Portal</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/assets/logos/icon.svg" type="image/svg+xml">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; overscroll-behavior: none; }
+    .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #E5E7EB; padding-bottom: env(safe-area-inset-bottom); z-index: 50; }
+    .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px 8px; background: none; border: none; cursor: pointer; color: #9CA3AF; font-size: 11px; font-weight: 500; transition: color 0.15s; }
+    .tab-btn.active { color: #1E3A5F; }
+    .tab-btn svg { width: 22px; height: 22px; }
+    .page { display: none; padding-bottom: 80px; min-height: 100vh; }
+    .page.active { display: block; }
+    #map-svg { touch-action: none; }
+    .grade-badge { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+    .send-btn { transition: all 0.15s; }
+    .send-btn.sent { background: #10B981; color: white; }
+  </style>
+</head>
+<body class="bg-gray-50 max-w-lg mx-auto">
+
+  <!-- ═══ LOGIN ═══ -->
+  <div id="login-screen" class="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-10">
+        <div class="w-14 h-14 bg-[#1E3A5F] rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
+        </div>
+        <h1 id="me-gym-name" class="text-2xl font-bold text-gray-900">Member Portal</h1>
+        <p class="text-gray-500 text-sm mt-1">Log in with your email</p>
+      </div>
+
+      <!-- Email step -->
+      <div id="email-step">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+        <input id="me-email" type="email" placeholder="you@email.com" autocomplete="email"
+               class="w-full px-4 py-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]">
+        <button onclick="requestCode()" class="w-full mt-4 bg-[#1E3A5F] text-white py-3 rounded-xl font-semibold text-base hover:bg-[#2A4D7A] transition">
+          Send Login Code
+        </button>
+        <p id="email-error" class="text-red-500 text-sm mt-2 hidden"></p>
+      </div>
+
+      <!-- OTP step -->
+      <div id="otp-step" class="hidden">
+        <p class="text-gray-600 text-sm mb-4">We've sent a 6-digit code to <strong id="otp-email-display"></strong></p>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Login code</label>
+        <input id="me-otp" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="123456" maxlength="6"
+               class="w-full px-4 py-3 border border-gray-300 rounded-xl text-2xl text-center font-bold tracking-widest focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]">
+        <button onclick="verifyCode()" class="w-full mt-4 bg-[#1E3A5F] text-white py-3 rounded-xl font-semibold text-base hover:bg-[#2A4D7A] transition">
+          Log In
+        </button>
+        <button onclick="showEmailStep()" class="w-full mt-2 text-gray-500 text-sm py-2">← Use different email</button>
+        <p id="otp-error" class="text-red-500 text-sm mt-2 hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ APP ═══ -->
+  <div id="app-shell" class="hidden">
+
+    <!-- Home / QR -->
+    <div id="page-home" class="page active">
+      <div class="px-4 pt-8 pb-4">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <p class="text-gray-500 text-sm">Welcome back,</p>
+            <h2 id="home-name" class="text-2xl font-bold text-gray-900"></h2>
+          </div>
+          <button onclick="logout()" class="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-100">Log out</button>
+        </div>
+
+        <!-- QR Code -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-center mb-4" onclick="showQRFullscreen()">
+          <canvas id="qr-canvas" class="mx-auto mb-3"></canvas>
+          <p class="text-xs text-gray-400">Tap to go fullscreen · Show this at the desk</p>
+        </div>
+
+        <!-- Active pass -->
+        <div id="home-pass" class="bg-[#1E3A5F] rounded-2xl p-4 text-white mb-4 hidden">
+          <p class="text-xs text-blue-200 font-semibold uppercase tracking-wide mb-1">Active Pass</p>
+          <p id="home-pass-name" class="font-bold text-lg"></p>
+          <p id="home-pass-detail" class="text-blue-200 text-sm mt-1"></p>
+        </div>
+
+        <div id="home-no-pass" class="bg-orange-50 border border-orange-200 rounded-2xl p-4 hidden">
+          <p class="font-semibold text-orange-800">No active pass</p>
+          <p class="text-orange-600 text-sm mt-1">Visit the front desk to purchase a pass.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map / Routes -->
+    <div id="page-map" class="page">
+      <div class="px-4 pt-6 pb-2">
+        <h2 class="text-xl font-bold text-gray-900 mb-1">Gym Map</h2>
+        <p class="text-sm text-gray-500 mb-4">Tap a route to mark it as sent</p>
+      </div>
+      <div class="relative bg-gray-100 mx-4 rounded-2xl overflow-hidden" style="height:300px">
+        <svg id="map-svg" viewBox="0 0 800 600" style="width:100%;height:100%;background:#F8FAFC">
+          <defs><pattern id="mgrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/></pattern></defs>
+          <rect width="800" height="600" fill="url(#mgrid)"/>
+          <g id="me-walls-group"></g>
+          <g id="me-climbs-group"></g>
+        </svg>
+        <div id="me-map-tooltip" class="hidden absolute bg-gray-900 text-white text-xs rounded-lg px-3 py-2 pointer-events-none shadow-lg" style="max-width:160px"></div>
+      </div>
+
+      <!-- Route list -->
+      <div class="px-4 mt-4">
+        <div class="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+          <button onclick="setMeGradeFilter(null)" id="me-filter-all" class="flex-shrink-0 px-3 py-1.5 bg-[#1E3A5F] text-white text-xs font-semibold rounded-full">All</button>
+          <button onclick="setMeGradeFilter('VB')" id="me-filter-VB" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">VB</button>
+          <button onclick="setMeGradeFilter('V0')" id="me-filter-V0" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V0</button>
+          <button onclick="setMeGradeFilter('V1')" id="me-filter-V1" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V1</button>
+          <button onclick="setMeGradeFilter('V2')" id="me-filter-V2" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V2</button>
+          <button onclick="setMeGradeFilter('V3')" id="me-filter-V3" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V3</button>
+          <button onclick="setMeGradeFilter('V4')" id="me-filter-V4" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V4</button>
+          <button onclick="setMeGradeFilter('V5')" id="me-filter-V5" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V5</button>
+          <button onclick="setMeGradeFilter('V6')" id="me-filter-V6" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V6</button>
+          <button onclick="setMeGradeFilter('V7')" id="me-filter-V7" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V7</button>
+          <button onclick="setMeGradeFilter('V8')" id="me-filter-V8" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V8</button>
+          <button onclick="setMeGradeFilter('V9')" id="me-filter-V9" class="flex-shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full hover:bg-gray-200">V9</button>
+        </div>
+        <div id="me-route-list" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Logbook -->
+    <div id="page-logbook" class="page">
+      <div class="px-4 pt-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-1">My Logbook</h2>
+        <p class="text-sm text-gray-500 mb-4">Climbs you've sent</p>
+        <div id="logbook-list" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Noticeboard -->
+    <div id="page-noticeboard" class="page">
+      <div class="px-4 pt-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-1">Noticeboard</h2>
+        <p class="text-sm text-gray-500 mb-4">News from the gym</p>
+        <div id="noticeboard-list" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Tab bar -->
+    <nav class="tab-bar">
+      <div class="flex">
+        <button class="tab-btn active" id="tab-home" onclick="switchTab('home')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Home
+        </button>
+        <button class="tab-btn" id="tab-map" onclick="switchTab('map')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+          Map
+        </button>
+        <button class="tab-btn" id="tab-logbook" onclick="switchTab('logbook')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Logbook
+        </button>
+        <button class="tab-btn" id="tab-noticeboard" onclick="switchTab('noticeboard')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          Board
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- QR Fullscreen -->
+  <div id="qr-fullscreen" class="hidden fixed inset-0 bg-white z-50 flex flex-col items-center justify-center" onclick="hideQRFullscreen()">
+    <canvas id="qr-fullscreen-canvas" class="mb-6"></canvas>
+    <p class="text-gray-500 text-sm">Tap anywhere to close</p>
+  </div>
+
+  <script src="me.js"></script>
+</body>
+</html>

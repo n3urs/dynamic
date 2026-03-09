@@ -27,7 +27,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com', 'cdn.jsdelivr.net'],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com', 'fonts.googleapis.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
@@ -90,6 +90,10 @@ app.get('/invite', (req, res) => {
 });
 app.use('/api/signup', require('./src/routes/signup'));
 
+// ── Member portal ──────────────────────────────────────────────────────────
+app.get('/me', (req, res) => res.sendFile(path.join(__dirname, 'src', 'public', 'me.html')));
+app.get('/me/*', (req, res) => res.sendFile(path.join(__dirname, 'src', 'public', 'me.html')));
+
 // ── Gym context middleware ─────────────────────────────────────────────────
 // Resolves the active gym_id from the request subdomain and threads it
 // through the entire async call chain via AsyncLocalStorage.
@@ -150,7 +154,8 @@ app.use('/api', (req, res, next) => {
     req.path.startsWith('/staff/invite') ||
     req.path.startsWith('/climber/auth') ||
     req.path.startsWith('/gym-info') ||
-    req.path.startsWith('/signup')
+    req.path.startsWith('/signup') ||
+    req.path.startsWith('/me/auth')
   ) return next();
   requireBilling(req, res, next);
 });
@@ -175,6 +180,7 @@ app.use('/api/stats', require('./src/routes/stats'));
 app.use('/api/export', require('./src/routes/export'));
 app.use('/api', require('./src/routes/register'));
 app.use('/api/dojo', require('./src/routes/dojo'));
+app.use('/api/me', require('./src/routes/me'));
 
 // Rate-limit auth endpoints (must be registered before the route handlers)
 app.use('/api/staff/auth', authLimiter);
