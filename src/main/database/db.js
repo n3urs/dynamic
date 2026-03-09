@@ -110,6 +110,15 @@ function runMigrations(db) {
   tryAdd('ALTER TABLE staff ADD COLUMN invite_token TEXT');
   tryAdd('ALTER TABLE staff ADD COLUMN invite_expires_at TEXT');
   tryAdd('ALTER TABLE staff ADD COLUMN invite_accepted INTEGER DEFAULT 0');
+  tryAdd('ALTER TABLE walls ADD COLUMN room_id TEXT');
+  tryAdd('ALTER TABLE walls ADD COLUMN path_json TEXT');
+  tryAdd(`CREATE TABLE IF NOT EXISTS rooms (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  tryAdd("INSERT OR IGNORE INTO settings (key, value) VALUES ('setup_complete', '0')");
 }
 
 /**

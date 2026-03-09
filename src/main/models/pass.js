@@ -199,29 +199,10 @@ const Pass = {
     const existing = db.prepare('SELECT count(*) as c FROM pass_types').get().c;
     if (existing > 0) return;
 
+    // Minimal defaults — gym owner configures pricing during setup wizard
     const types = [
-      // Single entry
-      { name: 'Adult Single Entry', category: 'single_entry', price_peak: 15.00, price_off_peak: 12.50 },
-      { name: 'Concession/Student/U18 Single Entry', category: 'single_entry', price_peak: 12.50, price_off_peak: 12.50 },
-      { name: 'Under 16 Single Entry', category: 'single_entry', price_peak: 12.00, price_off_peak: 12.00 },
-      { name: '8-10 Single Entry', category: 'single_entry', price_peak: 10.50, price_off_peak: 10.50 },
-      // 10 visit
-      { name: 'Adult 10 Visit Pass', category: 'multi_visit', price_peak: 135.00, price_off_peak: 135.00, visits_included: 10 },
-      { name: 'Concession/Student/U18 10 Visit Pass', category: 'multi_visit', price_peak: 112.50, price_off_peak: 112.50, visits_included: 10 },
-      // Monthly passes (single month, not recurring)
-      { name: 'Adult Monthly Pass', category: 'monthly_pass', price_peak: 45.00, price_off_peak: 35.00, duration_days: 30 },
-      { name: 'Concession Monthly Pass', category: 'monthly_pass', price_peak: 38.00, price_off_peak: 33.00, duration_days: 30 },
-      { name: 'Family Monthly Pass', category: 'monthly_pass', price_peak: 90.00, price_off_peak: 70.00, duration_days: 30 },
-      { name: 'U16 Monthly Pass', category: 'monthly_pass', price_peak: 35.00, price_off_peak: 25.00, duration_days: 30 },
-      // Memberships (DD recurring)
-      { name: 'Adult Monthly Membership', category: 'membership_dd', price_peak: 42.00, price_off_peak: 32.00, duration_days: 30, is_recurring: 1, recurring_interval: 'monthly' },
-      { name: 'Adult Annual Membership', category: 'membership_dd', price_peak: 465.00, price_off_peak: 352.00, duration_days: 365, is_recurring: 1, recurring_interval: 'annual' },
-      { name: 'Concession/Student/U18 Monthly Membership', category: 'membership_dd', price_peak: 35.00, price_off_peak: 30.00, duration_days: 30, is_recurring: 1, recurring_interval: 'monthly' },
-      { name: 'Concession/Student/U18 Annual Membership', category: 'membership_dd', price_peak: 385.00, price_off_peak: 330.00, duration_days: 365, is_recurring: 1, recurring_interval: 'annual' },
-      { name: 'Family Monthly Membership', category: 'membership_dd', price_peak: 85.00, price_off_peak: 65.00, duration_days: 30, is_recurring: 1, recurring_interval: 'monthly' },
-      // Staff & Complimentary
-      { name: 'Staff Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: null, duration_days: 365, description: 'Annual staff complimentary pass' },
-      { name: 'Staff Day Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: 1, duration_days: 1, description: 'Single day staff pass' },
+      { name: 'Adult Day Pass', category: 'single_entry', price_peak: 0, price_off_peak: 0, description: 'Configure your pricing in Settings → Pass Types' },
+      { name: 'Staff Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: null, duration_days: 365, description: 'Annual staff pass' },
       { name: 'Complimentary Pass', category: 'staff', price_peak: 0, price_off_peak: 0, visits_included: 1, duration_days: 30, description: 'Complimentary guest pass' },
     ];
 

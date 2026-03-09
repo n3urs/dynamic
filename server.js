@@ -32,12 +32,13 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com', 'fonts.googleapis.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:'],
-      frameSrc: ['www.youtube.com', 'youtube.com'],
+      frameSrc: ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtube-nocookie.com'],
       connectSrc: ["'self'"],
       scriptSrcAttr: ["'unsafe-inline'"], // allow onclick= handlers throughout the app
     },
   },
   crossOriginEmbedderPolicy: false, // needed for YouTube iframes
+  referrerPolicy: { policy: 'origin-when-cross-origin' },
 }));
 
 // Rate limiting for auth endpoints

@@ -1,12 +1,35 @@
 const router = require('express').Router();
 const Route = require('../main/models/route');
 
+// Rooms
+router.get('/rooms', (req, res, next) => {
+  try { res.json(Route.listRooms()); } catch (e) { next(e); }
+});
+router.post('/rooms', (req, res, next) => {
+  try { res.json(Route.createRoom(req.body)); } catch (e) { next(e); }
+});
+router.put('/rooms/:id', (req, res, next) => {
+  try { res.json(Route.updateRoom(req.params.id, req.body)); } catch (e) { next(e); }
+});
+router.delete('/rooms/:id', (req, res, next) => {
+  try { res.json(Route.deleteRoom(req.params.id)); } catch (e) { next(e); }
+});
+
 // Walls
 router.get('/walls', (req, res, next) => {
   try { res.json(Route.listWalls()); } catch (e) { next(e); }
 });
 router.get('/walls/:id', (req, res, next) => {
   try { res.json(Route.getWall(req.params.id) || null); } catch (e) { next(e); }
+});
+router.post('/walls', (req, res, next) => {
+  try { res.json(Route.createWall(req.body)); } catch (e) { next(e); }
+});
+router.put('/walls/:id', (req, res, next) => {
+  try { res.json(Route.updateWall(req.params.id, req.body)); } catch (e) { next(e); }
+});
+router.delete('/walls/:id', (req, res, next) => {
+  try { res.json(Route.deleteWall(req.params.id)); } catch (e) { next(e); }
 });
 
 // Climbs

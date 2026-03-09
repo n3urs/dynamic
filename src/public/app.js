@@ -122,6 +122,7 @@ function saveSession(staff) {
   window.currentStaff = staff;
   renderStaffWidget();
   applyNavPermissions();
+  setTimeout(() => checkSetupWizard(), 600);
 }
 
 function clearSession() {
@@ -138,6 +139,7 @@ function restoreSession() {
   window.currentStaff = s;
   renderStaffWidget();
   applyNavPermissions();
+  setTimeout(() => checkSetupWizard(), 500);
 }
 
 function hasPermission(staff, permission) {
@@ -444,21 +446,638 @@ async function handleFirstRunSetup() {
   btn.textContent = 'Creating...';
 
   try {
-    await api('POST', '/api/staff', { first_name: firstName, last_name: lastName, email, pin, role: 'owner' });
+    const newStaff = await api('POST', '/api/staff', { first_name: firstName, last_name: lastName, email, pin, role: 'owner' });
     document.getElementById('first-run-overlay').style.display = 'none';
     // If we came from the signup flow, show the success modal instead of just the dashboard
     if (sessionStorage.getItem('crux_signup_flow')) {
       const successModal = document.getElementById('signup-success-modal');
       if (successModal) successModal.style.display = 'flex';
     } else {
-      showToast(`Owner account created for ${firstName}. PIN: ${pin}`, 'success');
+      // Auto-login as the newly created owner and launch setup wizard
+      saveSession(newStaff);
       navigateTo('dashboard');
+      showToast(`Welcome, ${firstName}! Let's set up your gym.`, 'success');
     }
   } catch (err) {
     errEl.textContent = err.message || 'Failed to create account';
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Create Owner Account';
+  }
+}
+
+// ============================================================
+// Setup Wizard
+// ============================================================
+
+let _wizardStep = 1;
+const _wizardData = { gymName: '', contactEmail: '', phone: '', waiverVideoUrl: '' };
+let _waiverSections = [];
+let _waiverMinorOption = false;
+const WALL_COLOURS = ['#3B82F6','#10B981','#EF4444','#F59E0B','#8B5CF6','#EC4899','#14B8A6','#F97316'];
+let _mapState = {
+  localWalls: [], savedWalls: [], localRooms: [], savedRooms: [],
+  drawingPoints: [], isDrawing: false, cursorPos: null,
+  pendingColour: '#3B82F6', colourIndex: 0,
+};
+let _wizardPassTypes = [];
+
+async function checkSetupWizard() {
+  if (!window.currentStaff) return;
+  const role = window.currentStaff.role;
+  if (role !== 'owner' && role !== 'tech_lead') return;
+  // Don't show if other overlays are visible
+  const firstRun = document.getElementById('first-run-overlay');
+  if (firstRun && firstRun.style.display === 'flex') return;
+  try {
+    const settings = await api('GET', '/api/settings');
+    if (settings.setup_complete === '1') return;
+    _wizardData.gymName = settings.gym_name || '';
+    _wizardData.contactEmail = settings.contact_email || '';
+    _wizardData.phone = settings.contact_phone || '';
+    _wizardData.waiverVideoUrl = settings.waiver_video_url || '';
+    showSetupWizard();
+  } catch (e) { console.warn('[wizard] setup check failed', e); }
+}
+
+function showSetupWizard() {
+  _wizardStep = 1;
+  const el = document.getElementById('setup-wizard');
+  if (!el) return;
+  el.style.display = 'flex';
+  renderWizardStep();
+}
+
+async function wizardNext() {
+  const ok = await saveWizardStep(_wizardStep);
+  if (!ok) return;
+  if (_wizardStep === 5) { await completeSetupWizard(); return; }
+  _wizardStep++;
+  document.getElementById('wizard-content').scrollTop = 0;
+  renderWizardStep();
+}
+
+function wizardBack() {
+  if (_wizardStep <= 1) return;
+  _wizardStep--;
+  document.getElementById('wizard-content').scrollTop = 0;
+  renderWizardStep();
+}
+
+function renderWizardStep() {
+  const titles = ['Gym Details', 'Induction Video', 'Waiver Builder', 'Gym Map', 'Pass Types'];
+  document.getElementById('wizard-step-label').textContent = `Step ${_wizardStep} of 5 — ${titles[_wizardStep-1]}`;
+  document.getElementById('wizard-progress-bar').style.width = `${(_wizardStep / 5) * 100}%`;
+  document.getElementById('wizard-back-btn').style.display = _wizardStep > 1 ? 'block' : 'none';
+  document.getElementById('wizard-next-btn').textContent = _wizardStep === 5 ? 'Complete Setup ✓' : 'Next →';
+  const c = document.getElementById('wizard-content');
+  if (_wizardStep === 1) c.innerHTML = renderWizardStep1();
+  else if (_wizardStep === 2) c.innerHTML = renderWizardStep2();
+  else if (_wizardStep === 3) { c.innerHTML = renderWizardStep3(); initWaiverBuilder(); }
+  else if (_wizardStep === 4) { c.innerHTML = renderWizardStep4(); initWallMapBuilder(); }
+  else if (_wizardStep === 5) { c.innerHTML = renderWizardStep5(); loadWizardPassTypes(); }
+}
+
+async function saveWizardStep(n) {
+  if (n === 1) {
+    const name = document.getElementById('wz-gym-name').value.trim();
+    if (!name) { showToast('Please enter your gym name', 'error'); return false; }
+    _wizardData.gymName = name;
+    _wizardData.contactEmail = document.getElementById('wz-contact-email').value.trim();
+    _wizardData.phone = document.getElementById('wz-phone').value.trim();
+    await api('PUT', '/api/settings', { gym_name: name, contact_email: _wizardData.contactEmail, contact_phone: _wizardData.phone });
+    loadGymName();
+  } else if (n === 2) {
+    _wizardData.waiverVideoUrl = document.getElementById('wz-video-url').value.trim();
+    if (!_wizardData.waiverVideoUrl) { showToast('Please enter a YouTube URL for your induction video', 'error'); return false; }
+    if (!_wizardData.waiverVideoUrl.includes('youtube.com') && !_wizardData.waiverVideoUrl.includes('youtu.be')) { showToast('Please enter a valid YouTube URL', 'error'); return false; }
+    await api('PUT', '/api/settings', { waiver_video_url: _wizardData.waiverVideoUrl });
+  } else if (n === 3) {
+    await saveWaiverSections();
+  } else if (n === 4) {
+    await saveWallMap();
+  } else if (n === 5) {
+    await saveWizardPassTypes();
+  }
+  return true;
+}
+
+async function completeSetupWizard() {
+  await api('PUT', '/api/settings/setup_complete', { value: '1' });
+  document.getElementById('setup-wizard').style.display = 'none';
+  showToast('Setup complete! Welcome to Crux.', 'success');
+  navigateTo('dashboard');
+}
+
+// Step 1 — Gym Details
+function renderWizardStep1() {
+  return `<div class="max-w-lg mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Tell us about your gym</h2>
+    <p class="text-gray-500 mb-8">This appears on member-facing pages and emails.</p>
+    <div class="space-y-5">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Gym Name *</label>
+        <input type="text" id="wz-gym-name" value="${_wizardData.gymName}" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]" placeholder="e.g. Peak Climbing Centre">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Contact Email</label>
+        <input type="email" id="wz-contact-email" value="${_wizardData.contactEmail}" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-[#1E3A5F]" placeholder="hello@mygym.co.uk">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Phone Number</label>
+        <input type="tel" id="wz-phone" value="${_wizardData.phone}" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-[#1E3A5F]" placeholder="01234 567890">
+      </div>
+    </div>
+  </div>`;
+}
+
+// Step 2 — Induction Video
+function renderWizardStep2() {
+  const url = _wizardData.waiverVideoUrl;
+  const videoId = url && url.includes('v=') ? url.split('v=')[1].split('&')[0] : (url ? url.split('/').pop() : '');
+  return `<div class="max-w-lg mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Induction video</h2>
+    <p class="text-gray-500 mb-8">Members must watch this before signing your waiver. Paste a YouTube URL below. You can skip and add it later.</p>
+    <div class="mb-6">
+      <label class="block text-sm font-semibold text-gray-700 mb-1">YouTube URL</label>
+      <input type="url" id="wz-video-url" value="${url}" oninput="previewWizardVideo(this.value)"
+        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-[#1E3A5F]"
+        placeholder="https://www.youtube.com/watch?v=...">
+    </div>
+    <div id="wz-video-preview" class="${videoId ? '' : 'hidden'}">
+      ${videoId ? `<div class="relative rounded-xl overflow-hidden" style="padding-bottom:56.25%;height:0"><iframe src="https://www.youtube-nocookie.com/embed/${videoId}?rel=0" style="position:absolute;top:0;left:0;width:100%;height:100%" frameborder="0" allowfullscreen referrerpolicy="origin"></iframe></div>` : ''}
+    </div>
+  </div>`;
+}
+
+function previewWizardVideo(url) {
+  const videoId = url.includes('v=') ? url.split('v=')[1].split('&')[0] : url.split('/').pop();
+  const p = document.getElementById('wz-video-preview');
+  if (videoId && videoId.length > 5) {
+    p.innerHTML = `<div class="relative rounded-xl overflow-hidden" style="padding-bottom:56.25%;height:0"><iframe src="https://www.youtube-nocookie.com/embed/${videoId}?rel=0" style="position:absolute;top:0;left:0;width:100%;height:100%" frameborder="0" allowfullscreen referrerpolicy="origin"></iframe></div>`;
+    p.classList.remove('hidden');
+  } else { p.classList.add('hidden'); }
+}
+
+// Step 3 — Waiver Builder
+function renderWizardStep3() {
+  return `<div class="max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Build your waiver</h2>
+    <p class="text-gray-500 mb-6">Add sections that members fill in before their first session. Use ↑↓ to reorder.</p>
+    <div id="waiver-builder-sections" class="space-y-2 mb-6"></div>
+    <div class="border-2 border-dashed border-gray-200 rounded-xl p-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Add section</p>
+      <div class="flex flex-wrap gap-2">
+        ${[
+          ['text','📄 Text Block','Static text — rules, risk warnings etc.'],
+          ['checkbox','☑️ Checkbox','A statement the member must agree to'],
+          ['field_text','✏️ Text Field','A fill-in answer (e.g. medical conditions)'],
+          ['field_radio','◉ Multiple Choice','A question with selectable options'],
+          ['field_select','▾ Dropdown','A dropdown selection'],
+          ['signature','✍️ Signature','A signature pad'],
+          ['minor','👶 Minor Section','Option to add children / minors'],
+        ].map(([t,lbl,tip]) => `<button onclick="addWaiverBuilderSection('${t}')" title="${tip}" class="px-3 py-2 bg-white border border-gray-300 hover:border-[#1E3A5F] hover:bg-blue-50 rounded-lg text-sm font-medium text-gray-700 transition">${lbl}</button>`).join('')}
+      </div>
+    </div>
+    <div class="mt-4">
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" id="wz-minor-option" ${_waiverMinorOption ? 'checked' : ''} onchange="_waiverMinorOption=this.checked">
+        <span class="font-medium text-gray-700">Allow minors — parents can add children when signing</span>
+      </label>
+    </div>
+  </div>`;
+}
+
+function initWaiverBuilder() {
+  api('GET', '/api/waivers/templates/active/adult').then(t => {
+    if (t && t.content) {
+      _waiverSections = t.content.sections || [];
+      _waiverMinorOption = t.content.include_minor_option || false;
+      const cb = document.getElementById('wz-minor-option');
+      if (cb) cb.checked = _waiverMinorOption;
+    }
+    renderWaiverBuilderSections();
+  }).catch(() => renderWaiverBuilderSections());
+}
+
+function renderWaiverBuilderSections() {
+  const c = document.getElementById('waiver-builder-sections');
+  if (!c) return;
+  if (_waiverSections.length === 0) {
+    c.innerHTML = `<div class="text-center py-8 text-gray-400 text-sm border border-dashed border-gray-200 rounded-xl">No sections yet — add one below to build your waiver.</div>`;
+    return;
+  }
+  const BADGE = { text:'bg-blue-100 text-blue-700', checkbox:'bg-green-100 text-green-700', field_text:'bg-yellow-100 text-yellow-700', field_radio:'bg-purple-100 text-purple-700', field_select:'bg-orange-100 text-orange-700', signature:'bg-red-100 text-red-700', minor:'bg-pink-100 text-pink-700' };
+  const LABEL = { text:'Text', checkbox:'Checkbox', field_text:'Text Field', field_radio:'Multiple Choice', field_select:'Dropdown', signature:'Signature', minor:'Minor Section' };
+  c.innerHTML = _waiverSections.map((s, i) => `
+    <div class="bg-white border border-gray-200 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <div class="flex flex-col gap-1 mt-0.5 flex-shrink-0">
+          <button onclick="moveWaiverSection(${i},-1)" ${i===0?'disabled':''} class="text-gray-400 hover:text-gray-700 disabled:opacity-30 text-xs leading-none">↑</button>
+          <button onclick="moveWaiverSection(${i},1)" ${i===_waiverSections.length-1?'disabled':''} class="text-gray-400 hover:text-gray-700 disabled:opacity-30 text-xs leading-none">↓</button>
+        </div>
+        <div class="flex-1 min-w-0">
+          <span class="inline-block text-xs font-bold px-2 py-0.5 rounded-full mb-2 ${BADGE[s.type]||'bg-gray-100 text-gray-700'}">${LABEL[s.type]||s.type}</span>
+          ${renderWaiverSectionForm(s, i)}
+        </div>
+        <button onclick="removeWaiverSection(${i})" class="text-gray-300 hover:text-red-500 transition flex-shrink-0 mt-0.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderWaiverSectionForm(s, i) {
+  if (s.type === 'text') return `<div class="space-y-2">
+    <input type="text" placeholder="Section title (optional)" value="${s.title||''}" oninput="_waiverSections[${i}].title=this.value" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+    <textarea placeholder="Text content *" rows="3" oninput="_waiverSections[${i}].content=this.value" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F] resize-none">${s.content||''}</textarea>
+  </div>`;
+  if (s.type === 'checkbox') return `<textarea placeholder="Checkbox text — statement the member must agree to *" rows="2" oninput="_waiverSections[${i}].text=this.value" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F] resize-none">${s.text||''}</textarea>`;
+  if (s.type === 'field_text') return `<div class="flex gap-2 items-center">
+    <input type="text" placeholder="Label *" value="${s.label||''}" oninput="_waiverSections[${i}].label=this.value" class="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+    <label class="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap"><input type="checkbox" ${s.required?'checked':''} onchange="_waiverSections[${i}].required=this.checked"> Required</label>
+  </div>`;
+  if (s.type === 'field_radio' || s.type === 'field_select') return `<div class="space-y-2">
+    <div class="flex gap-2 items-center">
+      <input type="text" placeholder="Question *" value="${s.label||''}" oninput="_waiverSections[${i}].label=this.value" class="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+      <label class="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap"><input type="checkbox" ${s.required?'checked':''} onchange="_waiverSections[${i}].required=this.checked"> Required</label>
+    </div>
+    <div class="space-y-1 pl-2">
+      ${(s.options||[]).map((opt,oi) => `<div class="flex gap-2"><input type="text" value="${opt}" oninput="_waiverSections[${i}].options[${oi}]=this.value" class="flex-1 px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]"><button onclick="_waiverSections[${i}].options.splice(${oi},1);renderWaiverBuilderSections()" class="text-gray-400 hover:text-red-500 text-xs px-1">✕</button></div>`).join('')}
+      <button onclick="if(!_waiverSections[${i}].options)_waiverSections[${i}].options=[];_waiverSections[${i}].options.push('New option');renderWaiverBuilderSections()" class="text-xs text-blue-600 hover:underline">+ Add option</button>
+    </div>
+  </div>`;
+  if (s.type === 'signature') return `<input type="text" placeholder="Signature label" value="${s.label||'Signature'}" oninput="_waiverSections[${i}].label=this.value" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">`;
+  if (s.type === 'minor') return `<p class="text-sm text-gray-500">Adds a "I'm signing for a child" option. Parents provide child details and sign on their behalf.</p>`;
+  return '';
+}
+
+function addWaiverBuilderSection(type) {
+  if (type === 'minor' && _waiverSections.some(s => s.type === 'minor')) { showToast('Only one minor section allowed', 'error'); return; }
+  const defaults = {
+    text: { type, title:'', content:'' },
+    checkbox: { type, text:'' },
+    field_text: { type, label:'', required:true },
+    field_radio: { type, label:'', options:['Option 1','Option 2'], required:true },
+    field_select: { type, label:'', options:['Option 1','Option 2'], required:false },
+    signature: { type, label:'Signature', role:'supervisee' },
+    minor: { type },
+  };
+  _waiverSections.push(defaults[type]);
+  renderWaiverBuilderSections();
+  document.getElementById('waiver-builder-sections').lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function moveWaiverSection(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= _waiverSections.length) return;
+  [_waiverSections[i], _waiverSections[j]] = [_waiverSections[j], _waiverSections[i]];
+  renderWaiverBuilderSections();
+}
+
+function removeWaiverSection(i) {
+  _waiverSections.splice(i, 1);
+  renderWaiverBuilderSections();
+}
+
+async function saveWaiverSections() {
+  try {
+    const template = await api('GET', '/api/waivers/templates/active/adult');
+    if (!template) return;
+    const cb = document.getElementById('wz-minor-option');
+    if (cb) _waiverMinorOption = cb.checked;
+    await api('PUT', `/api/waivers/templates/${template.id}`, {
+      content: { sections: _waiverSections, include_minor_option: _waiverMinorOption, signatures_required: ['supervisee'] },
+      video_url: _wizardData.waiverVideoUrl,
+    });
+  } catch (e) { console.warn('[wizard] waiver save failed', e); }
+}
+
+// Step 4 — Wall Map Builder
+function renderWizardStep4() {
+  return `<div class="max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Draw your gym map</h2>
+    <p class="text-gray-500 mb-4">Draw each wall as a line — click to place points, double-click to finish. Then name the wall. You can come back and edit this any time in Routes → Edit Map.</p>
+    <div class="flex gap-4">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-3">
+          <button id="map-draw-btn" onclick="startDrawingWall()" class="px-4 py-2 bg-[#1E3A5F] text-white text-sm font-semibold rounded-lg hover:bg-[#2A4D7A] transition">✏️ Draw Wall</button>
+          <button onclick="cancelDrawing()" id="map-cancel-btn" class="hidden px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition">Cancel</button>
+          <span id="map-drawing-hint" class="text-sm text-amber-600 font-medium hidden">Click to add points · Double-click to finish</span>
+        </div>
+        <div class="border-2 border-gray-200 rounded-xl overflow-hidden" id="map-canvas-wrap">
+          <svg id="wall-map-svg" viewBox="0 0 800 600" style="width:100%;height:auto;display:block;background:#f8fafc"
+            onclick="handleMapClick(event)" ondblclick="handleMapDblClick(event)" onmousemove="handleMapMouseMove(event)">
+            <defs><pattern id="wiz-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8f0" stroke-width="0.5"/></pattern></defs>
+            <rect width="800" height="600" fill="url(#wiz-grid)"/>
+            <g id="wiz-walls-layer"></g>
+            <g id="wiz-drawing-layer"></g>
+          </svg>
+        </div>
+      </div>
+      <div class="w-60 flex-shrink-0 space-y-3">
+        <div class="bg-white border border-gray-200 rounded-xl p-3">
+          <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Rooms (optional)</p>
+          <div id="wiz-rooms-list" class="space-y-1 mb-2 max-h-28 overflow-y-auto"></div>
+          <div class="flex gap-2">
+            <input type="text" id="new-room-name" placeholder="Room name" class="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1E3A5F]">
+            <button onclick="addWizardRoom()" class="px-3 py-1.5 bg-[#1E3A5F] text-white text-xs font-semibold rounded-lg">+</button>
+          </div>
+        </div>
+        <div id="wiz-name-panel" class="bg-blue-50 border border-blue-200 rounded-xl p-3 hidden">
+          <p class="text-xs font-semibold text-blue-700 uppercase mb-2">Name this wall</p>
+          <input type="text" id="wiz-wall-name" placeholder="e.g. Left Wall" class="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm mb-2 focus:outline-none focus:border-[#1E3A5F]">
+          <div class="flex gap-1 mb-2 flex-wrap" id="wiz-colour-picker">
+            ${WALL_COLOURS.map((c,i) => `<button onclick="selectWallColour('${c}',${i})" class="w-7 h-7 rounded-full border-2 ${i===0?'border-gray-800 scale-110':'border-transparent'} transition" id="wc-${i}" style="background:${c}"></button>`).join('')}
+          </div>
+          <select id="wiz-wall-room" class="w-full px-2 py-1.5 border border-blue-200 rounded-lg text-sm mb-2 focus:outline-none"><option value="">No room</option></select>
+          <div class="flex gap-2">
+            <button onclick="confirmWallName()" class="flex-1 py-1.5 bg-[#1E3A5F] text-white text-sm font-semibold rounded-lg hover:bg-[#2A4D7A]">Save</button>
+            <button onclick="discardCurrentWall()" class="py-1.5 px-3 bg-white border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">✕</button>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-3">
+          <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Walls</p>
+          <div id="wiz-walls-list" class="space-y-1 max-h-48 overflow-y-auto"><p class="text-xs text-gray-400">No walls yet</p></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function initWallMapBuilder() {
+  try {
+    _mapState.savedWalls = await api('GET', '/api/routes/walls') || [];
+    _mapState.savedRooms = await api('GET', '/api/routes/rooms') || [];
+  } catch (e) { _mapState.savedWalls = []; _mapState.savedRooms = []; }
+  _mapState.localWalls = _mapState.savedWalls.map(w => ({ ...w, _localId: w.id }));
+  _mapState.localRooms = _mapState.savedRooms.map(r => ({ ...r, _localId: r.id }));
+  renderWallMapCanvas();
+  renderWizardRoomsList();
+  renderWizardWallsList();
+}
+
+function getSVGPoint(svg, e) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const p = pt.matrixTransform(ctm.inverse());
+  return { x: Math.round(p.x), y: Math.round(p.y) };
+}
+
+function handleMapClick(e) {
+  if (!_mapState.isDrawing || e.detail >= 2) return;
+  const svg = document.getElementById('wall-map-svg');
+  const pt = getSVGPoint(svg, e);
+  _mapState.drawingPoints.push([pt.x, pt.y]);
+  renderDrawingLayer();
+}
+
+function handleMapDblClick(e) {
+  if (!_mapState.isDrawing) return;
+  e.preventDefault();
+  if (_mapState.drawingPoints.length > 0) _mapState.drawingPoints.pop();
+  if (_mapState.drawingPoints.length < 2) { showToast('Draw at least 2 points to define a wall', 'error'); return; }
+  _mapState.isDrawing = false;
+  document.getElementById('map-draw-btn').classList.remove('hidden');
+  document.getElementById('map-cancel-btn').classList.add('hidden');
+  document.getElementById('map-drawing-hint').classList.add('hidden');
+  const panel = document.getElementById('wiz-name-panel');
+  panel.classList.remove('hidden');
+  document.getElementById('wiz-wall-name').value = '';
+  document.getElementById('wiz-wall-name').focus();
+  const sel = document.getElementById('wiz-wall-room');
+  sel.innerHTML = '<option value="">No room</option>' + _mapState.localRooms.map(r => `<option value="${r.id||r._localId}">${r.name}</option>`).join('');
+  renderDrawingLayer();
+}
+
+function handleMapMouseMove(e) {
+  if (!_mapState.isDrawing) return;
+  _mapState.cursorPos = getSVGPoint(document.getElementById('wall-map-svg'), e);
+  renderDrawingLayer();
+}
+
+function startDrawingWall() {
+  _mapState.isDrawing = true;
+  _mapState.drawingPoints = [];
+  _mapState.cursorPos = null;
+  document.getElementById('map-draw-btn').classList.add('hidden');
+  document.getElementById('map-cancel-btn').classList.remove('hidden');
+  document.getElementById('map-drawing-hint').classList.remove('hidden');
+  document.getElementById('wiz-name-panel').classList.add('hidden');
+}
+
+function cancelDrawing() {
+  _mapState.isDrawing = false;
+  _mapState.drawingPoints = [];
+  _mapState.cursorPos = null;
+  document.getElementById('map-draw-btn').classList.remove('hidden');
+  document.getElementById('map-cancel-btn').classList.add('hidden');
+  document.getElementById('map-drawing-hint').classList.add('hidden');
+  renderDrawingLayer();
+}
+
+function selectWallColour(c, i) {
+  _mapState.pendingColour = c;
+  _mapState.colourIndex = i;
+  WALL_COLOURS.forEach((_,j) => {
+    const btn = document.getElementById(`wc-${j}`);
+    if (btn) btn.className = `w-7 h-7 rounded-full border-2 ${j===i?'border-gray-800 scale-110':'border-transparent'} transition`;
+  });
+}
+
+function confirmWallName() {
+  const name = document.getElementById('wiz-wall-name').value.trim();
+  if (!name) { showToast('Please enter a wall name', 'error'); return; }
+  const roomSel = document.getElementById('wiz-wall-room');
+  const room_id = roomSel.value || null;
+  _mapState.localWalls.push({ _localId: Date.now(), name, colour: _mapState.pendingColour, room_id, path_json: [..._mapState.drawingPoints] });
+  _mapState.drawingPoints = [];
+  _mapState.colourIndex = (_mapState.colourIndex + 1) % WALL_COLOURS.length;
+  _mapState.pendingColour = WALL_COLOURS[_mapState.colourIndex];
+  document.getElementById('wiz-name-panel').classList.add('hidden');
+  renderWallMapCanvas();
+  renderWizardWallsList();
+}
+
+function discardCurrentWall() {
+  _mapState.drawingPoints = [];
+  document.getElementById('wiz-name-panel').classList.add('hidden');
+  renderDrawingLayer();
+}
+
+function addWizardRoom() {
+  const name = document.getElementById('new-room-name').value.trim();
+  if (!name) return;
+  _mapState.localRooms.push({ _localId: Date.now(), id: `local_${Date.now()}`, name });
+  document.getElementById('new-room-name').value = '';
+  renderWizardRoomsList();
+}
+
+function removeWizardRoom(localId) {
+  _mapState.localRooms = _mapState.localRooms.filter(r => (r._localId || r.id) != localId);
+  renderWizardRoomsList();
+}
+
+function removeWizardWall(localId) {
+  _mapState.localWalls = _mapState.localWalls.filter(w => (w._localId || w.id) != localId);
+  renderWallMapCanvas();
+  renderWizardWallsList();
+}
+
+function renderWizardRoomsList() {
+  const el = document.getElementById('wiz-rooms-list');
+  if (!el) return;
+  el.innerHTML = _mapState.localRooms.length === 0 ? '<p class="text-xs text-gray-400">No rooms</p>'
+    : _mapState.localRooms.map(r => `<div class="flex items-center justify-between text-xs py-0.5">
+      <span class="text-gray-700">${r.name}</span>
+      <button onclick="removeWizardRoom(${r._localId||`'${r.id}'`})" class="text-gray-300 hover:text-red-500">✕</button>
+    </div>`).join('');
+}
+
+function renderWizardWallsList() {
+  const el = document.getElementById('wiz-walls-list');
+  if (!el) return;
+  if (_mapState.localWalls.length === 0) { el.innerHTML = '<p class="text-xs text-gray-400">No walls yet</p>'; return; }
+  el.innerHTML = _mapState.localWalls.map(w => `
+    <div class="flex items-center gap-2 py-0.5">
+      <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${w.colour}"></div>
+      <span class="text-xs text-gray-700 flex-1 truncate">${w.name}</span>
+      <button onclick="removeWizardWall(${w._localId||`'${w.id}'`})" class="text-gray-300 hover:text-red-500 text-xs flex-shrink-0">✕</button>
+    </div>
+  `).join('');
+}
+
+function renderWallMapCanvas() {
+  const layer = document.getElementById('wiz-walls-layer');
+  if (!layer) return;
+  layer.innerHTML = _mapState.localWalls.map(w => {
+    const pts = w.path_json;
+    if (!pts || pts.length < 2) return '';
+    const points = pts.map(p => p.join(',')).join(' ');
+    const mid = pts[Math.floor(pts.length / 2)];
+    return `<g>
+      <polyline points="${points}" fill="none" stroke="${w.colour}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+      ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${w.colour}" opacity="0.6"/>`).join('')}
+      <text x="${mid[0]}" y="${mid[1]-10}" text-anchor="middle" fill="${w.colour}" font-size="11" font-weight="700" opacity="0.9">${w.name}</text>
+    </g>`;
+  }).join('');
+}
+
+function renderDrawingLayer() {
+  const layer = document.getElementById('wiz-drawing-layer');
+  if (!layer) return;
+  const pts = _mapState.drawingPoints;
+  const colour = _mapState.pendingColour;
+  let html = '';
+  if (pts.length >= 2) html += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${colour}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>`;
+  if (pts.length >= 1 && _mapState.cursorPos) {
+    const last = pts[pts.length-1];
+    html += `<line x1="${last[0]}" y1="${last[1]}" x2="${_mapState.cursorPos.x}" y2="${_mapState.cursorPos.y}" stroke="${colour}" stroke-width="2" stroke-dasharray="5,5" opacity="0.5"/>`;
+  }
+  pts.forEach(p => { html += `<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${colour}" stroke="white" stroke-width="2"/>`; });
+  if (_mapState.cursorPos) html += `<circle cx="${_mapState.cursorPos.x}" cy="${_mapState.cursorPos.y}" r="4" fill="${colour}" opacity="0.4"/>`;
+  layer.innerHTML = html;
+}
+
+async function saveWallMap() {
+  try {
+    const roomIdMap = {};
+    for (const r of _mapState.localRooms) {
+      if (r.id && !r.id.startsWith('local_')) { roomIdMap[r._localId||r.id] = r.id; }
+      else { const saved = await api('POST', '/api/routes/rooms', { name: r.name }); roomIdMap[r._localId||r.id] = saved.id; }
+    }
+    const localIds = new Set(_mapState.localWalls.filter(w => w.id).map(w => w.id));
+    for (const sw of _mapState.savedWalls) {
+      if (!localIds.has(sw.id)) await api('DELETE', `/api/routes/walls/${sw.id}`);
+    }
+    for (const w of _mapState.localWalls) {
+      const room_id = w.room_id ? (roomIdMap[w.room_id] || w.room_id) : null;
+      const payload = { name: w.name, colour: w.colour, room_id, path_json: w.path_json };
+      if (w.id && !String(w.id).startsWith('local_')) await api('PUT', `/api/routes/walls/${w.id}`, payload);
+      else await api('POST', '/api/routes/walls', payload);
+    }
+  } catch (e) { console.warn('[wizard] wall map save failed', e); }
+}
+
+// Step 5 — Pass Types
+function renderWizardStep5() {
+  return `<div class="max-w-3xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 mb-2">Set up your pass types</h2>
+    <p class="text-gray-500 mb-6">Configure your pricing. You can always add more in Settings → Pass Types later.</p>
+    <div id="wiz-pass-list" class="space-y-3 mb-4"></div>
+    <button onclick="addWizardPassType()" class="w-full py-3 border-2 border-dashed border-gray-300 hover:border-[#1E3A5F] text-gray-500 hover:text-[#1E3A5F] rounded-xl text-sm font-medium transition">+ Add Pass Type</button>
+  </div>`;
+}
+
+async function loadWizardPassTypes() {
+  try { _wizardPassTypes = await api('GET', '/api/passes/types') || []; } catch (e) { _wizardPassTypes = []; }
+  renderWizardPassList();
+}
+
+function renderWizardPassList() {
+  const el = document.getElementById('wiz-pass-list');
+  if (!el) return;
+  if (_wizardPassTypes.length === 0) { el.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No pass types.</p>'; return; }
+  const CATS = ['single_entry','multi_visit','monthly_pass','membership_dd','staff'];
+  el.innerHTML = _wizardPassTypes.map((p, i) => `
+    <div class="bg-white border border-gray-200 rounded-xl p-4">
+      <div class="grid grid-cols-5 gap-3 items-end mb-3">
+        <div class="col-span-2">
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Name</label>
+          <input type="text" value="${p.name}" oninput="_wizardPassTypes[${i}].name=this.value" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Peak £</label>
+          <input type="number" step="0.01" value="${p.price_peak||0}" oninput="_wizardPassTypes[${i}].price_peak=parseFloat(this.value)||0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Off-Peak £</label>
+          <input type="number" step="0.01" value="${p.price_off_peak||0}" oninput="_wizardPassTypes[${i}].price_off_peak=parseFloat(this.value)||0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Category</label>
+          <select oninput="_wizardPassTypes[${i}].category=this.value" class="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+            ${CATS.map(c => `<option value="${c}" ${p.category===c?'selected':''}>${c.replace(/_/g,' ')}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Visits (blank = unlimited)</label>
+          <input type="number" value="${p.visits_included||''}" placeholder="∞" oninput="_wizardPassTypes[${i}].visits_included=this.value?parseInt(this.value):null" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Duration days</label>
+          <input type="number" value="${p.duration_days||''}" placeholder="No expiry" oninput="_wizardPassTypes[${i}].duration_days=this.value?parseInt(this.value):null" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1E3A5F]">
+        </div>
+        <div class="flex items-end pb-0.5">
+          ${p.category !== 'staff' ? `<button onclick="removeWizardPassType(${i})" class="text-xs text-red-400 hover:text-red-600 hover:underline">Remove</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addWizardPassType() {
+  _wizardPassTypes.push({ name:'New Pass', category:'single_entry', price_peak:0, price_off_peak:0 });
+  renderWizardPassList();
+  document.getElementById('wiz-pass-list').lastElementChild?.scrollIntoView({ behavior:'smooth' });
+}
+
+function removeWizardPassType(i) {
+  _wizardPassTypes.splice(i, 1);
+  renderWizardPassList();
+}
+
+async function saveWizardPassTypes() {
+  for (const p of _wizardPassTypes) {
+    try {
+      if (p.id) await api('PUT', `/api/passes/types/${p.id}`, p);
+      else await api('POST', '/api/passes/types', p);
+    } catch (e) { console.warn('[wizard] pass save failed', e); }
   }
 }
 
@@ -3528,47 +4147,39 @@ let mapColourFilters = new Set();
 let mapShowStripped = false;
 
 // Wall path definitions for SVG map
-const WALL_PATHS = {
-  wall_cove: {
-    // Open line: zig-zags across top, then drops down right side
-    path: 'M 100,130 L 145,155 L 260,100 L 400,155 L 530,100 L 620,100 L 660,180 L 680,300 L 690,420 L 690,450',
-    fill: '#0EA5E9', label: 'Cove Wall', labelX: 350, labelY: 80, closed: false,
-    climbOffset: 0
-  },
-  wall_mothership: {
-    // Elongated octagon in centre — climbs go on the perimeter
-    path: 'M 280,320 L 280,245 L 320,210 L 500,205 L 540,240 L 540,320 L 500,355 L 320,360 Z',
-    fill: '#EAB308', label: 'Mothership', labelX: 410, labelY: 290, closed: true,
-    climbOffset: 0
-  },
-  wall_mystery: {
-    // Open line across bottom — shallow arch. Climbs sit on the line.
-    path: 'M 120,490 L 170,530 L 380,505 L 560,520 L 620,515 L 620,570',
-    fill: '#EF4444', label: 'Magical Mystery', labelX: 390, labelY: 555, closed: false,
-    climbOffset: 0
-  }
-};
+// Cache of DB walls for the routes page — loaded fresh each time loadRoutes() runs
+let _routeWallsCache = [];
 
-// Get points along an SVG path for auto-distributing climbs
-function getPointsAlongPath(pathStr, numPoints) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', pathStr);
-  svg.appendChild(path);
-  document.body.appendChild(svg);
-  const totalLength = path.getTotalLength();
-  const points = [];
-  for (let i = 0; i < numPoints; i++) {
-    const distance = (totalLength / (numPoints + 1)) * (i + 1);
-    const pt = path.getPointAtLength(distance);
-    points.push({ x: Math.round(pt.x * 10) / 10, y: Math.round(pt.y * 10) / 10 });
+// Distribute points evenly along a polyline
+function getPointsAlongPolyline(points, numPoints) {
+  if (!points || points.length < 2 || numPoints < 1) return [];
+  // Calculate total length
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i][0] - points[i-1][0], dy = points[i][1] - points[i-1][1];
+    total += Math.sqrt(dx*dx + dy*dy);
   }
-  document.body.removeChild(svg);
-  return points;
+  const result = [];
+  for (let n = 0; n < numPoints; n++) {
+    let target = (total / (numPoints + 1)) * (n + 1);
+    let rem = target;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i][0] - points[i-1][0], dy = points[i][1] - points[i-1][1];
+      const segLen = Math.sqrt(dx*dx + dy*dy);
+      if (rem <= segLen || i === points.length - 1) {
+        const t = segLen > 0 ? Math.min(rem / segLen, 1) : 0;
+        result.push({ x: Math.round((points[i-1][0] + t*dx) * 10) / 10, y: Math.round((points[i-1][1] + t*dy) * 10) / 10 });
+        break;
+      }
+      rem -= segLen;
+    }
+  }
+  return result;
 }
 
-async function autoDistributeClimbs(climbs) {
-  // Group climbs missing positions by wall
+async function autoDistributeClimbs(climbs, walls) {
+  const wallMap = {};
+  (walls || _routeWallsCache).forEach(w => { wallMap[w.id] = w; });
   const missing = {};
   for (const c of climbs) {
     if (c.map_x == null || c.map_y == null) {
@@ -3578,37 +4189,20 @@ async function autoDistributeClimbs(climbs) {
   }
   const wallIds = Object.keys(missing);
   if (wallIds.length === 0) return;
-
   const positions = [];
   for (const wallId of wallIds) {
-    const wallDef = WALL_PATHS[wallId];
-    if (!wallDef) continue;
+    const wall = wallMap[wallId];
+    if (!wall || !wall.path_json || wall.path_json.length < 2) continue;
     const wallClimbs = missing[wallId];
-    const pts = getPointsAlongPath(wallDef.path, wallClimbs.length);
-    const offset = wallDef.climbOffset || 0;
+    const pts = getPointsAlongPolyline(wall.path_json, wallClimbs.length);
     for (let i = 0; i < wallClimbs.length; i++) {
-      // Offset climbs inward from the wall using normal direction
-      let ox = pts[i].x, oy = pts[i].y;
-      if (offset !== 0 && i < pts.length) {
-        // Get tangent at this point and compute perpendicular offset
-        const prev = i > 0 ? pts[i-1] : pts[i];
-        const next = i < pts.length - 1 ? pts[i+1] : pts[i];
-        const dx = next.x - prev.x, dy = next.y - prev.y;
-        const len = Math.sqrt(dx*dx + dy*dy) || 1;
-        // Perpendicular: rotate tangent 90 degrees
-        ox = pts[i].x + (-dy / len) * offset;
-        oy = pts[i].y + (dx / len) * offset;
-      }
-      wallClimbs[i].map_x = Math.round(ox * 10) / 10;
-      wallClimbs[i].map_y = Math.round(oy * 10) / 10;
+      wallClimbs[i].map_x = pts[i]?.x ?? 400;
+      wallClimbs[i].map_y = pts[i]?.y ?? 300;
       positions.push({ id: wallClimbs[i].id, map_x: wallClimbs[i].map_x, map_y: wallClimbs[i].map_y });
     }
   }
-
   if (positions.length > 0) {
-    try {
-      await api('POST', '/api/routes/climbs/map-positions', { positions });
-    } catch (e) { console.warn('Failed to save auto-distributed positions:', e); }
+    try { await api('POST', '/api/routes/climbs/map-positions', { positions }); } catch (e) { console.warn('Failed to save auto-distributed positions:', e); }
   }
 }
 
@@ -3681,24 +4275,8 @@ async function loadRoutes() {
             </defs>
             <rect width="800" height="600" fill="url(#gym-grid)"/>
 
-            <!-- Wall shapes -->
-            <!-- Cove Wall: open path (no fill), thick stroke -->
-            <path d="${WALL_PATHS.wall_cove.path}" fill="none" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-            <!-- Mothership: closed octagon with fill -->
-            <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.12" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.6" stroke-width="3"/>
-            <!-- Magical Mystery: open path (no fill), thick stroke -->
-            <path d="${WALL_PATHS.wall_mystery.path}" fill="none" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
-            <!-- Wall labels -->
-            <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="18" font-weight="700">COVE WALL</text>
-            <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.5" font-size="16" font-weight="700">MOTHERSHIP</text>
-            <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#64748B" fill-opacity="0.4" font-size="14" font-weight="700">MAGICAL MYSTERY</text>
-
-            <!-- Reception marker — top left -->
-            <g transform="translate(60,65)">
-              <rect x="-18" y="-12" width="36" height="24" rx="4" fill="#94A3B8" fill-opacity="0.3" stroke="#94A3B8" stroke-opacity="0.5" stroke-width="1"/>
-              <text x="0" y="5" text-anchor="middle" fill="#64748B" font-size="10" font-weight="600">REC</text>
-            </g>
+            <!-- Wall shapes — rendered dynamically by renderRoutesPage() -->
+            <g id="map-walls-group"></g>
 
             <!-- Climb dots rendered here -->
             <g id="map-climbs-group"></g>
@@ -3855,6 +4433,23 @@ async function renderMapView() {
   const group = document.getElementById('map-climbs-group');
   if (!group) return;
 
+  // Render walls into map-walls-group
+  const wallsGroup = document.getElementById('map-walls-group');
+  if (wallsGroup && _routeWallsCache.length) {
+    wallsGroup.innerHTML = _routeWallsCache.map(w => {
+      const pts = Array.isArray(w.path_json) ? w.path_json : [];
+      if (pts.length < 2) return '';
+      const pointsAttr = pts.map(p => `${p[0]},${p[1]}`).join(' ');
+      const colour = w.colour || '#64748B';
+      // Compute label position as midpoint of polyline
+      const mid = pts[Math.floor(pts.length / 2)];
+      return `
+        <polyline points="${pointsAttr}" fill="none" stroke="${colour}" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="${mid[0]}" y="${mid[1] - 8}" text-anchor="middle" fill="${colour}" fill-opacity="0.9" font-size="11" font-weight="700">${w.name.toUpperCase()}</text>
+      `;
+    }).join('');
+  }
+
   let climbs = _mapClimbsCache;
   if (!climbs.length) return;
 
@@ -3922,6 +4517,9 @@ async function renderRoutesPage() {
 
     const allClimbs = [...activeClimbs, ...strippedClimbs];
 
+    // Cache walls for map rendering and mini-map
+    _routeWallsCache = walls;
+
     // Auto-distribute climbs missing map positions
     const needsPosition = allClimbs.filter(c => c.map_x == null || c.map_y == null);
     if (needsPosition.length > 0) {
@@ -3940,9 +4538,9 @@ async function renderRoutesPage() {
     const tabContainer = document.getElementById('wall-filter-tabs');
     if (tabContainer) {
       tabContainer.innerHTML = `
-        <button onclick="setWallFilter(null)" class="px-4 py-2 rounded-lg text-sm font-medium transition ${!routesWallFilter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">All</button>
+        <button onclick="setWallFilter(null)" data-wall-id="" class="px-4 py-2 rounded-lg text-sm font-medium transition ${!routesWallFilter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">All</button>
         ${walls.map(w => `
-          <button onclick="setWallFilter('${w.id}')" class="px-4 py-2 rounded-lg text-sm font-medium transition ${routesWallFilter === w.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${w.name}</button>
+          <button onclick="setWallFilter('${w.id}')" data-wall-id="${w.id}" class="px-4 py-2 rounded-lg text-sm font-medium transition ${routesWallFilter === w.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${w.name}</button>
         `).join('')}
       `;
     }
@@ -4029,8 +4627,8 @@ function setWallFilter(wallId) {
     const tabContainer = document.getElementById('wall-filter-tabs');
     if (tabContainer) {
       tabContainer.querySelectorAll('button').forEach(btn => {
-        const isAll = btn.textContent.trim() === 'All';
-        const isActive = isAll ? !wallId : btn.textContent.trim() === (wallId === 'wall_cove' ? 'Cove Wall' : wallId === 'wall_mothership' ? 'Mothership' : wallId === 'wall_mystery' ? 'Magical Mystery' : '');
+        const btnWallId = btn.getAttribute('data-wall-id') || '';
+        const isActive = wallId ? btnWallId === wallId : btnWallId === '';
         btn.className = `px-4 py-2 rounded-lg text-sm font-medium transition ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
       });
     }
@@ -4039,10 +4637,16 @@ function setWallFilter(wallId) {
   }
 }
 
-function showAddClimbModal(existingClimb = null) {
+async function showAddClimbModal(existingClimb = null) {
   const isEdit = !!existingClimb;
   const title = isEdit ? 'Edit Climb' : 'Add Climb';
   const today = new Date().toISOString().split('T')[0];
+
+  // Ensure walls are loaded
+  if (!_routeWallsCache.length) {
+    try { _routeWallsCache = await api('GET', '/api/routes/walls'); } catch (_) {}
+  }
+  const walls = _routeWallsCache;
 
   document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto';
   showModal(`
@@ -4056,9 +4660,9 @@ function showAddClimbModal(existingClimb = null) {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Wall *</label>
             <select name="wall_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-              <option value="wall_cove" ${isEdit && existingClimb.wall_id === 'wall_cove' ? 'selected' : ''}>Cove Wall</option>
-              <option value="wall_mothership" ${isEdit && existingClimb.wall_id === 'wall_mothership' ? 'selected' : ''}>Mothership</option>
-              <option value="wall_mystery" ${isEdit && existingClimb.wall_id === 'wall_mystery' ? 'selected' : ''}>Magical Mystery</option>
+              ${walls.length
+                ? walls.map(w => `<option value="${w.id}" ${isEdit && existingClimb.wall_id === w.id ? 'selected' : ''}>${w.name}</option>`).join('')
+                : '<option value="">No walls configured — add walls in Settings</option>'}
             </select>
           </div>
           <div class="grid grid-cols-2 gap-3">
@@ -4106,12 +4710,15 @@ function showAddClimbModal(existingClimb = null) {
                    onclick="placeClimbOnMinimap(event)">
                 <defs><pattern id="minigrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/></pattern></defs>
                 <rect width="800" height="600" fill="url(#minigrid)"/>
-                <path d="${WALL_PATHS.wall_cove.path}" fill="none" stroke="${WALL_PATHS.wall_cove.fill}" stroke-opacity="0.6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="${WALL_PATHS.wall_mothership.path}" fill="${WALL_PATHS.wall_mothership.fill}" fill-opacity="0.1" stroke="${WALL_PATHS.wall_mothership.fill}" stroke-opacity="0.5" stroke-width="2"/>
-                <path d="${WALL_PATHS.wall_mystery.path}" fill="none" stroke="${WALL_PATHS.wall_mystery.fill}" stroke-opacity="0.6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                <text x="${WALL_PATHS.wall_cove.labelX}" y="${WALL_PATHS.wall_cove.labelY}" text-anchor="middle" fill="#94A3B8" font-size="14" font-weight="700">COVE</text>
-                <text x="${WALL_PATHS.wall_mothership.labelX}" y="${WALL_PATHS.wall_mothership.labelY}" text-anchor="middle" fill="#94A3B8" font-size="12" font-weight="700">MOTHERSHIP</text>
-                <text x="${WALL_PATHS.wall_mystery.labelX}" y="${WALL_PATHS.wall_mystery.labelY}" text-anchor="middle" fill="#94A3B8" font-size="11" font-weight="700">MYSTERY</text>
+                ${walls.map(w => {
+                  const pts = Array.isArray(w.path_json) ? w.path_json : [];
+                  if (pts.length < 2) return '';
+                  const pointsAttr = pts.map(p => `${p[0]},${p[1]}`).join(' ');
+                  const colour = w.colour || '#64748B';
+                  const mid = pts[Math.floor(pts.length / 2)];
+                  return `<polyline points="${pointsAttr}" fill="none" stroke="${colour}" stroke-opacity="0.7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <text x="${mid[0]}" y="${mid[1] - 6}" text-anchor="middle" fill="${colour}" fill-opacity="0.8" font-size="10" font-weight="700">${w.name.toUpperCase()}</text>`;
+                }).join('')}
                 <circle id="minimap-preview-dot" cx="${isEdit && existingClimb.map_x ? existingClimb.map_x : 0}" cy="${isEdit && existingClimb.map_y ? existingClimb.map_y : 0}" r="10" fill="#3B82F6" stroke="white" stroke-width="2" ${isEdit && existingClimb.map_x ? '' : 'visibility="hidden"'}/>
               </svg>
             </div>
@@ -4533,6 +5140,7 @@ async function loadStaff() {
       <button onclick="switchSettingsTab('integrations')" class="settings-tab px-5 py-3 text-sm font-medium border-b-2 ${settingsTab === 'integrations' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-stab="integrations">Integrations</button>
       <button onclick="switchSettingsTab('waivers')" class="settings-tab px-5 py-3 text-sm font-medium border-b-2 ${settingsTab === 'waivers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-stab="waivers">Waivers</button>
       <button onclick="switchSettingsTab('billing')" class="settings-tab px-5 py-3 text-sm font-medium border-b-2 ${settingsTab === 'billing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-stab="billing">Billing</button>
+      <button onclick="switchSettingsTab('map')" class="settings-tab px-5 py-3 text-sm font-medium border-b-2 ${settingsTab === 'map' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-stab="map">Gym Map</button>
     </div>
 
     <div id="settings-tab-staff" class="settings-tab-content ${settingsTab !== 'staff' ? 'hidden' : ''}"></div>
@@ -4542,6 +5150,7 @@ async function loadStaff() {
     <div id="settings-tab-integrations" class="settings-tab-content ${settingsTab !== 'integrations' ? 'hidden' : ''}"></div>
     <div id="settings-tab-waivers" class="settings-tab-content ${settingsTab !== 'waivers' ? 'hidden' : ''}"></div>
     <div id="settings-tab-billing" class="settings-tab-content ${settingsTab !== 'billing' ? 'hidden' : ''}"></div>
+    <div id="settings-tab-map" class="settings-tab-content ${settingsTab !== 'map' ? 'hidden' : ''}"></div>
   `;
 
   loadSettingsTabContent(settingsTab);
@@ -4674,6 +5283,7 @@ async function loadSettingsTabContent(tab) {
     case 'integrations': return loadIntegrationSettings();
     case 'waivers': return loadWaiverSettings();
     case 'billing': return loadBillingSettings();
+    case 'map': return loadMapSettings();
   }
 }
 
@@ -6054,6 +6664,315 @@ async function billingPortal(gymId) {
 }
 
 // ============================================================
+// Gym Map Settings Tab
+// ============================================================
+
+async function loadMapSettings() {
+  const container = document.getElementById('settings-tab-map');
+  container.innerHTML = '<p class="text-gray-400 text-center py-8">Loading...</p>';
+  try {
+    const [rooms, walls] = await Promise.all([
+      api('GET', '/api/routes/rooms'),
+      api('GET', '/api/routes/walls'),
+    ]);
+
+    container.innerHTML = `
+      <div class="space-y-8">
+
+        <!-- Rooms -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">Rooms</h3>
+              <p class="text-sm text-gray-500">Named groups of walls (e.g. Main Room, Basement)</p>
+            </div>
+            <button onclick="showAddRoomModal()" class="px-4 py-2 bg-[#1E3A5F] hover:bg-[#2A4D7A] text-white text-sm font-medium rounded-lg transition">+ Add Room</button>
+          </div>
+          <div id="map-settings-rooms" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            ${rooms.length === 0
+              ? '<p class="text-gray-400 text-sm text-center py-6">No rooms yet</p>'
+              : rooms.map((r, i) => `
+                <div class="flex items-center justify-between px-4 py-3 ${i < rooms.length - 1 ? 'border-b border-gray-100' : ''}">
+                  <span class="text-sm font-medium text-gray-900">${r.name}</span>
+                  <div class="flex gap-1">
+                    <button onclick="showRenameRoomModal('${r.id}','${r.name.replace(/'/g, "\\'")}')" class="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                    <button onclick="deleteRoom('${r.id}')" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+          </div>
+        </div>
+
+        <!-- Walls -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">Walls</h3>
+              <p class="text-sm text-gray-500">Draw the shape of each wall section on the floor plan</p>
+            </div>
+            <button onclick="showDrawWallModal()" class="px-4 py-2 bg-[#1E3A5F] hover:bg-[#2A4D7A] text-white text-sm font-medium rounded-lg transition">+ Draw Wall</button>
+          </div>
+          <div id="map-settings-walls" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            ${walls.length === 0
+              ? '<p class="text-gray-400 text-sm text-center py-6">No walls yet — click "Draw Wall" to add one</p>'
+              : walls.map((w, i) => {
+                  const room = rooms.find(r => r.id === w.room_id);
+                  const pts = Array.isArray(w.path_json) ? w.path_json : [];
+                  return `
+                    <div class="flex items-center justify-between px-4 py-3 ${i < walls.length - 1 ? 'border-b border-gray-100' : ''}">
+                      <div class="flex items-center gap-3">
+                        <div class="w-3 h-3 rounded-full" style="background:${w.colour || '#64748B'}"></div>
+                        <div>
+                          <p class="text-sm font-medium text-gray-900">${w.name}</p>
+                          <p class="text-xs text-gray-400">${room ? room.name + ' · ' : ''}${pts.length} points</p>
+                        </div>
+                      </div>
+                      <div class="flex gap-1">
+                        <button onclick="showEditWallModal('${w.id}')" class="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        </button>
+                        <button onclick="deleteWallSetting('${w.id}')" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<p class="text-red-400 text-center py-8">Error: ${err.message}</p>`;
+  }
+}
+
+function showAddRoomModal() {
+  showModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">Add Room</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <input id="new-room-name" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 mb-4" placeholder="e.g. Main Room">
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Cancel</button>
+        <button onclick="saveNewRoom()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Add Room</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('new-room-name')?.focus(), 50);
+}
+
+async function saveNewRoom() {
+  const name = document.getElementById('new-room-name').value.trim();
+  if (!name) { showToast('Enter a room name', 'error'); return; }
+  try {
+    await api('POST', '/api/routes/rooms', { name });
+    closeModal();
+    showToast('Room added', 'success');
+    loadMapSettings();
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+function showRenameRoomModal(id, currentName) {
+  showModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">Rename Room</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <input id="rename-room-name" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 mb-4" value="${currentName}">
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Cancel</button>
+        <button onclick="saveRenameRoom('${id}')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Save</button>
+      </div>
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('rename-room-name'); if (el) { el.focus(); el.select(); } }, 50);
+}
+
+async function saveRenameRoom(id) {
+  const name = document.getElementById('rename-room-name').value.trim();
+  if (!name) { showToast('Enter a room name', 'error'); return; }
+  try {
+    await api('PUT', `/api/routes/rooms/${id}`, { name });
+    closeModal();
+    showToast('Room renamed', 'success');
+    loadMapSettings();
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function deleteRoom(id) {
+  if (!confirm('Delete this room? Walls assigned to it will become unassigned.')) return;
+  try {
+    await api('DELETE', `/api/routes/rooms/${id}`);
+    showToast('Room deleted', 'success');
+    loadMapSettings();
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+// Draw Wall modal — reuses the same SVG canvas approach as the wizard
+let _settingsWallDrawState = { points: [], drawing: false, colour: '#3B82F6' };
+
+async function showDrawWallModal(existingWallId = null) {
+  let existingWall = null;
+  if (existingWallId) {
+    try { existingWall = await api('GET', `/api/routes/walls/${existingWallId}`); } catch (_) {}
+  }
+  const rooms = await api('GET', '/api/routes/rooms');
+
+  _settingsWallDrawState = {
+    points: existingWall && Array.isArray(existingWall.path_json) ? existingWall.path_json : [],
+    drawing: false,
+    colour: existingWall?.colour || '#3B82F6',
+  };
+
+  document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto';
+  showModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">${existingWall ? 'Edit Wall' : 'Draw New Wall'}</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Wall Name *</label>
+          <input id="sw-wall-name" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm" value="${existingWall?.name || ''}" placeholder="e.g. Left Wall">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Room</label>
+          <select id="sw-wall-room" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm">
+            <option value="">No room</option>
+            ${rooms.map(r => `<option value="${r.id}" ${existingWall?.room_id === r.id ? 'selected' : ''}>${r.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-2">Colour</label>
+        <div class="flex gap-2 flex-wrap" id="sw-colour-row">
+          ${['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#64748B'].map(c => `
+            <div onclick="selectSettingsWallColour('${c}')" style="width:24px;height:24px;background:${c};border-radius:50%;cursor:pointer;border:3px solid ${c === _settingsWallDrawState.colour ? '#fff' : 'transparent'};box-shadow:${c === _settingsWallDrawState.colour ? '0 0 0 2px '+c : 'none'}" data-colour="${c}"></div>
+          `).join('')}
+        </div>
+      </div>
+      <p class="text-xs text-gray-500 mb-2">Click to place points · Double-click to finish · <button onclick="clearSettingsWallDraw()" class="text-blue-500 hover:underline">Clear</button></p>
+      <svg id="sw-map-svg" viewBox="0 0 800 500" style="width:100%;height:260px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:0.5rem;cursor:crosshair"
+           onclick="settingsMapClick(event)" ondblclick="settingsMapDblClick(event)">
+        <defs><pattern id="swgrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E5E7EB" stroke-width="0.5"/></pattern></defs>
+        <rect width="800" height="500" fill="url(#swgrid)"/>
+        <g id="sw-existing-walls"></g>
+        <polyline id="sw-drawing-line" points="" fill="none" stroke="${_settingsWallDrawState.colour}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <g id="sw-points-group"></g>
+      </svg>
+      <div class="flex justify-end gap-2 mt-4">
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Cancel</button>
+        <button onclick="saveSettingsWall(${existingWallId ? `'${existingWallId}'` : 'null'})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Save Wall</button>
+      </div>
+    </div>
+  `);
+
+  // Render existing walls as context, and pre-draw existing path
+  setTimeout(() => {
+    renderSettingsExistingWalls(existingWallId);
+    renderSettingsDrawing();
+  }, 50);
+}
+
+async function renderSettingsExistingWalls(skipId = null) {
+  const g = document.getElementById('sw-existing-walls');
+  if (!g) return;
+  try {
+    const walls = await api('GET', '/api/routes/walls');
+    g.innerHTML = walls.filter(w => w.id !== skipId).map(w => {
+      const pts = Array.isArray(w.path_json) ? w.path_json : [];
+      if (pts.length < 2) return '';
+      return `<polyline points="${pts.map(p => p[0]+','+p[1]).join(' ')}" fill="none" stroke="${w.colour || '#64748B'}" stroke-opacity="0.4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }).join('');
+  } catch (_) {}
+}
+
+function renderSettingsDrawing() {
+  const line = document.getElementById('sw-drawing-line');
+  const dotsG = document.getElementById('sw-points-group');
+  if (!line || !dotsG) return;
+  const pts = _settingsWallDrawState.points;
+  line.setAttribute('points', pts.map(p => p[0]+','+p[1]).join(' '));
+  line.setAttribute('stroke', _settingsWallDrawState.colour);
+  dotsG.innerHTML = pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${_settingsWallDrawState.colour}" stroke="white" stroke-width="1.5"/>`).join('');
+}
+
+function settingsMapClick(e) {
+  if (e.detail >= 2) return; // ignore double-click
+  const svg = document.getElementById('sw-map-svg');
+  if (!svg) return;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+  _settingsWallDrawState.points.push([Math.round(sp.x), Math.round(sp.y)]);
+  renderSettingsDrawing();
+}
+
+function settingsMapDblClick(e) {
+  // Remove last point (dblclick fires click twice) and finish
+  if (_settingsWallDrawState.points.length > 0) _settingsWallDrawState.points.pop();
+  renderSettingsDrawing();
+}
+
+function selectSettingsWallColour(c) {
+  _settingsWallDrawState.colour = c;
+  document.querySelectorAll('#sw-colour-row [data-colour]').forEach(el => {
+    const isActive = el.getAttribute('data-colour') === c;
+    el.style.border = `3px solid ${isActive ? '#fff' : 'transparent'}`;
+    el.style.boxShadow = isActive ? `0 0 0 2px ${c}` : 'none';
+  });
+  renderSettingsDrawing();
+}
+
+function clearSettingsWallDraw() {
+  _settingsWallDrawState.points = [];
+  renderSettingsDrawing();
+}
+
+async function saveSettingsWall(existingId) {
+  const name = document.getElementById('sw-wall-name').value.trim();
+  if (!name) { showToast('Enter a wall name', 'error'); return; }
+  if (_settingsWallDrawState.points.length < 2) { showToast('Draw at least 2 points to define a wall', 'error'); return; }
+  const roomId = document.getElementById('sw-wall-room').value || null;
+  const data = { name, colour: _settingsWallDrawState.colour, path_json: _settingsWallDrawState.points, room_id: roomId };
+  try {
+    if (existingId) {
+      await api('PUT', `/api/routes/walls/${existingId}`, data);
+      showToast('Wall updated', 'success');
+    } else {
+      await api('POST', '/api/routes/walls', data);
+      showToast('Wall added', 'success');
+    }
+    closeModal();
+    loadMapSettings();
+    _routeWallsCache = []; // clear cache so routes page reloads walls
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+function showEditWallModal(id) {
+  showDrawWallModal(id);
+}
+
+async function deleteWallSetting(id) {
+  if (!confirm('Delete this wall? Any climbs on it will be unassigned from the map.')) return;
+  try {
+    await api('DELETE', `/api/routes/walls/${id}`);
+    showToast('Wall deleted', 'success');
+    loadMapSettings();
+    _routeWallsCache = [];
+  } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ============================================================
 // Modal
 // ============================================================
 
@@ -6109,7 +7028,7 @@ document.head.appendChild(shakeStyle);
 
 // Gym name — loaded from settings, used throughout the UI
 window.gymName = 'Crux';
-(async function loadGymName() {
+async function loadGymName() {
   try {
     const settings = await api('GET', '/api/settings');
     if (settings && settings.gym_name) {
@@ -6125,7 +7044,8 @@ window.gymName = 'Crux';
       document.title = settings.gym_name + ' · Crux';
     }
   } catch (e) { /* settings not critical for startup */ }
-})();
+}
+loadGymName();
 
 // Init — no login required, check first run then load dashboard
 restoreSession();

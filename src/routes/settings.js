@@ -27,4 +27,15 @@ router.put('/:key', (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Batch update: PUT /api/settings with body { key: value, ... }
+router.put('/', (req, res, next) => {
+  try {
+    const db = getDb();
+    const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))");
+    const updateMany = db.transaction((pairs) => { for (const [k, v] of pairs) stmt.run(k, String(v)); });
+    updateMany(Object.entries(req.body));
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

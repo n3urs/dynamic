@@ -444,12 +444,21 @@ CREATE INDEX IF NOT EXISTS idx_staff_shifts_date ON staff_shifts(shift_date);
 -- ROUTESETTING
 -- ============================================================
 
+CREATE TABLE IF NOT EXISTS rooms (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS walls (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,                    -- 'Cove Wall', 'Mothership', 'Magical Mystery'
+  name TEXT NOT NULL,
   colour TEXT,                           -- display colour for gym map
   description TEXT,
-  sort_order INTEGER DEFAULT 0
+  sort_order INTEGER DEFAULT 0,
+  room_id TEXT REFERENCES rooms(id),
+  path_json TEXT                         -- JSON array of [[x,y], ...] points
 );
 
 CREATE TABLE IF NOT EXISTS climbs (
@@ -599,13 +608,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('gocardless_environment', 'sandbox'),
   ('dojo_api_key', ''),
   ('dojo_terminal_id', ''),
-  ('waiver_video_url', 'https://www.youtube.com/watch?v=-r2zbi21aks');
+  ('waiver_video_url', ''),
+  ('setup_complete', '0');
 
--- Default walls
-INSERT OR IGNORE INTO walls (id, name, colour, description, sort_order) VALUES
-  ('wall_cove', 'Cove Wall', '#0EA5E9', 'Left wall — also Competition Wall', 1),
-  ('wall_mothership', 'Mothership', '#EAB308', 'Centre island — routes all the way around', 2),
-  ('wall_mystery', 'Magical Mystery', '#EF4444', 'Right wall', 3);
+-- No default walls — gym owner draws their own map during setup
 
 -- Default product categories (matching Beta)
 INSERT OR IGNORE INTO product_categories (id, name, icon, sort_order) VALUES

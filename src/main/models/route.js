@@ -9,17 +9,81 @@ const Route = {
   // ---- Walls ----
 
   listWalls() {
-    return getDb().prepare('SELECT * FROM walls ORDER BY sort_order').all();
+    const walls = getDb().prepare('SELECT * FROM walls ORDER BY sort_order').all();
+    return walls.map(w => ({
+      ...w,
+      path_json: w.path_json ? JSON.parse(w.path_json) : null,
+    }));
   },
 
   getWall(id) {
     const db = getDb();
     const wall = db.prepare('SELECT * FROM walls WHERE id = ?').get(id);
     if (wall) {
+      if (wall.path_json) wall.path_json = JSON.parse(wall.path_json);
       wall.active_climbs = db.prepare("SELECT * FROM climbs WHERE wall_id = ? AND status = 'active' ORDER BY grade").all(id);
       wall.climb_count = wall.active_climbs.length;
     }
     return wall;
+  },
+
+  createWall(data) {
+    const id = data.id || uuidv4();
+    const db = getDb();
+    db.prepare(`INSERT INTO walls (id, name, colour, description, sort_order, room_id, path_json)
+      VALUES (@id, @name, @colour, @description, @sort_order, @room_id, @path_json)`).run({
+      id, name: data.name, colour: data.colour || '#3B82F6',
+      description: data.description || null, sort_order: data.sort_order || 0,
+      room_id: data.room_id || null,
+      path_json: data.path_json ? JSON.stringify(data.path_json) : null,
+    });
+    return this.getWall(id);
+  },
+
+  updateWall(id, data) {
+    const db = getDb();
+    const fields = [], params = { id };
+    if (data.name !== undefined) { fields.push('name = @name'); params.name = data.name; }
+    if (data.colour !== undefined) { fields.push('colour = @colour'); params.colour = data.colour; }
+    if (data.description !== undefined) { fields.push('description = @description'); params.description = data.description; }
+    if (data.sort_order !== undefined) { fields.push('sort_order = @sort_order'); params.sort_order = data.sort_order; }
+    if (data.room_id !== undefined) { fields.push('room_id = @room_id'); params.room_id = data.room_id; }
+    if (data.path_json !== undefined) { fields.push('path_json = @path_json'); params.path_json = JSON.stringify(data.path_json); }
+    if (fields.length > 0) db.prepare(`UPDATE walls SET ${fields.join(', ')} WHERE id = @id`).run(params);
+    return this.getWall(id);
+  },
+
+  deleteWall(id) {
+    const db = getDb();
+    db.prepare("UPDATE climbs SET status='archived' WHERE wall_id = ?").run(id);
+    db.prepare('DELETE FROM walls WHERE id = ?').run(id);
+    return { success: true };
+  },
+
+  listRooms() {
+    return getDb().prepare('SELECT * FROM rooms ORDER BY sort_order').all();
+  },
+
+  createRoom(data) {
+    const id = uuidv4();
+    getDb().prepare('INSERT INTO rooms (id, name, sort_order) VALUES (?, ?, ?)').run(id, data.name, data.sort_order || 0);
+    return { id, name: data.name, sort_order: data.sort_order || 0 };
+  },
+
+  updateRoom(id, data) {
+    const db = getDb();
+    const fields = [], params = { id };
+    if (data.name !== undefined) { fields.push('name = @name'); params.name = data.name; }
+    if (data.sort_order !== undefined) { fields.push('sort_order = @sort_order'); params.sort_order = data.sort_order; }
+    if (fields.length > 0) db.prepare(`UPDATE rooms SET ${fields.join(', ')} WHERE id = @id`).run(params);
+    return { id, ...data };
+  },
+
+  deleteRoom(id) {
+    const db = getDb();
+    db.prepare('UPDATE walls SET room_id = NULL WHERE room_id = ?').run(id);
+    db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+    return { success: true };
   },
 
   // ---- Climbs ----
