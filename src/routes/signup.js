@@ -73,7 +73,7 @@ router.post('/create', async (req, res) => {
     // 2. Create owner account in the new gym's DB (if details provided)
     if (ownerFirstName && ownerEmail) {
       try {
-        const { gymContext } = require('../main/database/gymContext');
+        const gymContext = require('../main/database/gymContext');
         const { getDb } = require('../main/database/db');
         const Staff = require('../main/models/staff');
         gymContext.run({ gymId }, () => {
