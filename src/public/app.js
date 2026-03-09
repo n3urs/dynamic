@@ -1,5 +1,5 @@
 /**
- * BoulderRyn — Frontend Application (Web Version)
+ * Dynamic — Frontend Application (Web Version)
  * Complete overhaul matching BETA gym software
  */
 
@@ -130,7 +130,7 @@ function requirePin(permission, callback, title, desc) {
   document.getElementById('challenge-pin-staff').innerHTML = '';
   updateChallengeDots();
 
-  document.getElementById('pin-challenge-overlay').classList.remove('hidden');
+  document.getElementById('pin-challenge-overlay').style.display = 'flex';
 }
 
 function updateChallengeDots() {
@@ -187,7 +187,7 @@ async function attemptPinChallenge(pin) {
     }
 
     // Success
-    document.getElementById('pin-challenge-overlay').classList.add('hidden');
+    document.getElementById('pin-challenge-overlay').style.display = 'none';
     if (_challengeCallback) _challengeCallback(result);
     _challengeCallback = null;
     _challengePermission = null;
@@ -207,7 +207,7 @@ function showPinError(msg) {
 }
 
 function cancelPinChallenge() {
-  document.getElementById('pin-challenge-overlay').classList.add('hidden');
+  document.getElementById('pin-challenge-overlay').style.display = 'none';
   _challengeCallback = null;
   _challengePermission = null;
   _challengePinValue = '';
@@ -230,59 +230,69 @@ async function checkFirstRun() {
 
 function showFirstRunSetup() {
   const overlay = document.getElementById('first-run-overlay');
-  overlay.classList.remove('hidden');
+  overlay.style.display = 'flex';
   const container = document.getElementById('first-run-container');
   container.innerHTML = `
     <div class="text-center mb-8">
-      <img src="/logo.png" alt="BoulderRyn" class="w-20 h-20 mx-auto mb-2">
-      <h1 class="text-3xl font-bold text-white tracking-tight">BoulderRyn</h1>
+      <img src="/assets/logos/logo-light.svg" alt="Dynamic" class="h-12 mx-auto mb-2">
       <p class="text-slate-400 mt-2">First Time Setup</p>
     </div>
     <div class="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
       <h2 class="text-lg font-semibold text-white mb-1">Create First Staff Account</h2>
       <p class="text-slate-400 text-sm mb-6">This will be the owner account with full access. PIN defaults to your birthday (DDMM).</p>
-      <form id="first-run-form" onsubmit="handleFirstRunSetup(event)">
+      <div id="first-run-fields">
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label class="block text-xs text-slate-400 mb-1">First Name</label>
-            <input type="text" name="first_name" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            <input type="text" id="fr-first-name" class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="First">
           </div>
           <div>
             <label class="block text-xs text-slate-400 mb-1">Last Name</label>
-            <input type="text" name="last_name" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            <input type="text" id="fr-last-name" class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Last">
           </div>
         </div>
         <div class="mb-3">
           <label class="block text-xs text-slate-400 mb-1">Email</label>
-          <input type="email" name="email" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+          <input type="email" id="fr-email" class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="you@example.com">
         </div>
         <div class="mb-3">
           <label class="block text-xs text-slate-400 mb-1">4-Digit PIN (e.g. birthday DDMM)</label>
-          <input type="text" name="pin" maxlength="4" pattern="[0-9]{4}" required class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-center text-xl tracking-[0.5em] font-mono" placeholder="DDMM">
+          <input type="tel" id="fr-pin" maxlength="4" inputmode="numeric" class="w-full px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-center text-xl tracking-[0.5em] font-mono" placeholder="••••">
         </div>
         <div id="first-run-error" class="text-red-400 text-sm mb-3 hidden"></div>
-        <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Create Owner Account</button>
-      </form>
+        <button type="button" onclick="handleFirstRunSetup()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Create Owner Account</button>
+      </div>
     </div>
   `;
 }
 
-async function handleFirstRunSetup(e) {
-  e.preventDefault();
-  const form = document.getElementById('first-run-form');
-  const data = Object.fromEntries(new FormData(form));
-  data.role = 'owner';
-  const errEl = document.getElementById('first-run-error');
+async function handleFirstRunSetup() {
+  const firstName = document.getElementById('fr-first-name').value.trim();
+  const lastName  = document.getElementById('fr-last-name').value.trim();
+  const email     = document.getElementById('fr-email').value.trim();
+  const pin       = document.getElementById('fr-pin').value.trim();
+  const errEl     = document.getElementById('first-run-error');
+
+  // Validate in JS — no reliance on browser form validation
+  if (!firstName || !lastName) { errEl.textContent = 'First and last name are required.'; errEl.classList.remove('hidden'); return; }
+  if (!email || !email.includes('@')) { errEl.textContent = 'Enter a valid email address.'; errEl.classList.remove('hidden'); return; }
+  if (!/^\d{4}$/.test(pin)) { errEl.textContent = 'PIN must be exactly 4 digits.'; errEl.classList.remove('hidden'); return; }
+  errEl.classList.add('hidden');
+
+  const btn = document.querySelector('#first-run-fields button');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
 
   try {
-    const staff = await api('POST', '/api/staff', data);
-    if (staff.error) throw new Error(staff.error);
-    document.getElementById('first-run-overlay').classList.add('hidden');
-    showToast(`Owner account created for ${data.first_name}. PIN: ${data.pin}`, 'success');
+    await api('POST', '/api/staff', { first_name: firstName, last_name: lastName, email, pin, role: 'owner' });
+    document.getElementById('first-run-overlay').style.display = 'none';
+    showToast(`Owner account created for ${firstName}. PIN: ${pin}`, 'success');
     navigateTo('dashboard');
   } catch (err) {
-    errEl.textContent = err.message;
+    errEl.textContent = err.message || 'Failed to create account';
     errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Create Owner Account';
   }
 }
 
@@ -1291,7 +1301,7 @@ async function exportMembersCSV() {
     const a = document.createElement('a');
     const today = new Date().toISOString().split('T')[0];
     a.href = url;
-    a.download = `boulderryn-members-${today}.csv`;
+    a.download = `members-export-${today}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2165,7 +2175,7 @@ function showMemberQrCode(memberId, memberName) {
         <img src="/api/members/${memberId}/qr-code?size=300" alt="QR Code" class="mx-auto" style="width:200px;height:200px;">
       </div>
       <div class="flex gap-2">
-        <a href="/api/members/${memberId}/qr-code?size=400" download="boulderryn-qr.png" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition text-center">Download</a>
+        <a href="/api/members/${memberId}/qr-code?size=400" download="member-qr.png" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition text-center">Download</a>
         <button onclick="(async()=>{try{const r=await api('POST','/api/members/${memberId}/send-qr-email');showToast(r.success?'QR code emailed':'Email failed: '+(r.error||'Unknown'),'info');}catch(e){showToast('Email failed: '+e.message,'error');}})()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition">Email QR</button>
       </div>
       <button onclick="openMemberProfile('${memberId}')" class="mt-3 text-sm text-gray-400 hover:text-gray-600">Back to profile</button>
@@ -4474,10 +4484,10 @@ function printEodReport() {
   const dateInput = document.getElementById('eod-date');
   const date = dateInput?.value || '';
   const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>BoulderRyn EOD Report ${date}</title>
+  w.document.write(`<!DOCTYPE html><html><head><title>${window.gymName || 'Gym'} EOD Report ${date}</title>
     <style>body{font-family:sans-serif;padding:2rem;max-width:600px;margin:0 auto}h2{margin-bottom:0.25rem}p{margin:0.15rem 0}.row{display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid #eee}.label{color:#666}.bold{font-weight:700}@media print{button{display:none}}</style>
   </head><body>
-    <h2>BoulderRyn — End of Day Report</h2>
+    <h2>${window.gymName || 'Gym'} — End of Day Report</h2>
     <p style="color:#666;margin-bottom:1.5rem">${date}</p>
     ${content.innerHTML}
     <script>window.onload=()=>window.print()<\/script>
@@ -5196,7 +5206,7 @@ async function loadGeneralSettings() {
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Contact Email</label>
-                  <input type="email" name="contact_email" class="form-input" value="${settings.contact_email || ''}" placeholder="info@boulderryn.co.uk">
+                  <input type="email" name="contact_email" class="form-input" value="${settings.contact_email || ''}" placeholder="info@yourgym.co.uk">
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-3">
@@ -5206,7 +5216,7 @@ async function loadGeneralSettings() {
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Website</label>
-                  <input type="text" name="gym_website" class="form-input" value="${settings.gym_website || ''}" placeholder="https://boulderryn.co.uk">
+                  <input type="text" name="gym_website" class="form-input" value="${settings.gym_website || ''}" placeholder="https://yourgym.co.uk">
                 </div>
               </div>
               <div>
@@ -5392,7 +5402,7 @@ async function loadIntegrationSettings() {
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">From Address</label>
-              <input type="email" name="email_from" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value="${settings.email_from || ''}" placeholder="noreply@boulderryn.com">
+              <input type="email" name="email_from" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value="${settings.email_from || ''}" placeholder="noreply@yourgym.com">
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -5436,11 +5446,11 @@ async function saveIntegration(e, type) {
 
 function showModal(html) {
   document.getElementById('modal-content').innerHTML = html;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.getElementById('modal-overlay').style.display = 'flex';
 }
 
 function closeModal() {
-  document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('modal-overlay').style.display = 'none';
   document.getElementById('modal-content').innerHTML = '';
   document.getElementById('modal-content').className = 'bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto';
 }
@@ -5483,6 +5493,20 @@ shakeStyle.textContent = `
   .animate-shake { animation: shake 0.4s ease-in-out; }
 `;
 document.head.appendChild(shakeStyle);
+
+// Gym name — loaded from settings, used throughout the UI
+window.gymName = 'Dynamic';
+(async function loadGymName() {
+  try {
+    const settings = await api('GET', '/api/settings');
+    if (settings && settings.gym_name) {
+      window.gymName = settings.gym_name;
+      const sidebarFooter = document.getElementById('sidebar-gym-footer');
+      if (sidebarFooter) sidebarFooter.textContent = settings.gym_name;
+      document.title = settings.gym_name + ' · Dynamic';
+    }
+  } catch (e) { /* settings not critical for startup */ }
+})();
 
 // Init — no login required, check first run then load dashboard
 checkFirstRun();

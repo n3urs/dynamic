@@ -14,8 +14,8 @@
  * Setup:
  *   1. Log in to https://developer.dojo.tech/
  *   2. Generate an API key (sk_sandbox_... for test, sk_prod_... for live)
- *   3. Add to /etc/boulderryn.env: DOJO_API_KEY=sk_prod_xxxxx
- *   4. Add to /etc/boulderryn.env: DOJO_ACCOUNT_ID=your-account-id
+ *   3. Add to /etc/dynamic.env: DOJO_API_KEY=sk_prod_xxxxx
+ *   4. Add to /etc/dynamic.env: DOJO_ACCOUNT_ID=your-account-id
  */
 
 const https = require('https');
@@ -78,7 +78,7 @@ module.exports = {
         currencyCode: 'GBP',
       },
       reference,
-      description: description || 'BoulderRyn',
+      description: description || 'Climbing Gym',
       paymentMethods: ['Card'],
       // For EPOS/terminal: no redirect needed
     });

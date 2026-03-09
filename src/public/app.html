@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>BoulderRyn</title>
+  <title>Climber Portal</title>
+  <link rel="icon" href="/assets/logos/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#1E3A5F">
-  <link rel="apple-touch-icon" href="/icon-192.svg">
+  <link rel="apple-touch-icon" href="/assets/logos/icon.svg">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -60,8 +61,8 @@
   <div id="login-page" class="min-h-screen flex flex-col items-center justify-center px-6">
     <div class="w-full max-w-sm">
       <div class="text-center mb-10">
-        <img src="/logo.png" alt="BoulderRyn" class="w-20 h-20 mx-auto mb-4">
-        <h1 class="text-2xl font-bold text-navy">BoulderRyn</h1>
+        <img src="/assets/logos/logo-dark.svg" alt="Dynamic" class="h-12 mx-auto mb-4">
+        <h1 id="portal-gym-name" class="text-lg font-semibold text-navy mt-2">Climber Portal</h1>
         <p class="text-gray-500 mt-1">Welcome back, climber</p>
       </div>
 
@@ -319,12 +320,27 @@
     // ═══════════════════════════════════════════════════════════
     // STATE
     // ═══════════════════════════════════════════════════════════
-    let token = localStorage.getItem('boulderryn_token');
-    let member = JSON.parse(localStorage.getItem('boulderryn_member') || 'null');
+    let token = localStorage.getItem('dynamic_token');
+    let member = JSON.parse(localStorage.getItem('dynamic_member') || 'null');
     let allRoutes = [];
     let loginEmail = '';
 
     const API = '/api/climber';
+
+    // Load gym name from settings and update UI
+    (async function loadGymName() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const settings = await res.json();
+          if (settings && settings.gym_name) {
+            const el = document.getElementById('portal-gym-name');
+            if (el) el.textContent = settings.gym_name;
+            document.title = settings.gym_name;
+          }
+        }
+      } catch (e) {}
+    })();
 
     // ═══════════════════════════════════════════════════════════
     // API HELPER
@@ -393,8 +409,8 @@
         const data = await api('/auth/verify-code', { method: 'POST', body: JSON.stringify({ email: loginEmail, code }) });
         token = data.token;
         member = data.member;
-        localStorage.setItem('boulderryn_token', token);
-        localStorage.setItem('boulderryn_member', JSON.stringify(member));
+        localStorage.setItem('dynamic_token', token);
+        localStorage.setItem('dynamic_member', JSON.stringify(member));
         showApp();
       } catch (err) {
         showError(errEl, err.error || 'Invalid code');
@@ -413,8 +429,8 @@
     function logout() {
       token = null;
       member = null;
-      localStorage.removeItem('boulderryn_token');
-      localStorage.removeItem('boulderryn_member');
+      localStorage.removeItem('dynamic_token');
+      localStorage.removeItem('dynamic_member');
       document.getElementById('app-shell').classList.add('hidden');
       document.getElementById('login-page').classList.remove('hidden');
       backToEmail();

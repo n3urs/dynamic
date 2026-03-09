@@ -113,7 +113,7 @@ function showWaiverFormStep() {
         <div class="space-y-3 mb-6">
           ${(content.confirmation_questions || [
             'Do you understand that failure to exercise due care could result in injury or death?',
-            'Have you watched the BoulderRyn Induction Video?',
+            'Have you watched the Induction Video?',
             'Have you fully read and understood this Participation Agreement?',
             'Do you agree to abide by the rules and conditions?',
             'Do you understand that the matting does not remove the risk of injury?',
@@ -132,7 +132,7 @@ function showWaiverFormStep() {
           <div class="space-y-3 mb-6">
             <label class="flex items-start gap-3 text-sm bg-blue-50 rounded-lg p-3">
               <input type="checkbox" name="photo_id_consent" required class="mt-0.5 flex-shrink-0">
-              <span><strong>Under 18 Photo ID Consent</strong> — I confirm that I am the parent/legal guardian of the above-named child and I consent to BoulderRyn Ltd taking and storing a photograph of my child for identification purposes at the reception desk only.</span>
+              <span><strong>Under 18 Photo ID Consent</strong> — I confirm that I am the parent/legal guardian of the above-named child and I consent to the gym taking and storing a photograph of my child for identification purposes at the reception desk only.</span>
             </label>
           </div>
 

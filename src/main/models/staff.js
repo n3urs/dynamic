@@ -220,7 +220,7 @@ const Staff = {
       email: 'oscar@sullivanltd.co.uk',
       role: 'owner',
       pin: '2109',
-      password: 'boulderryn2024',
+      password: 'dynamic2026',
     });
 
     return { created: true, staff: owner };

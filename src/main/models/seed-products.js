@@ -1,5 +1,5 @@
 /**
- * Seed BoulderRyn products matching Beta categories
+ * Seed default gym products
  */
 
 const { getDb } = require('../database/db');
@@ -128,11 +128,11 @@ function seedProducts() {
   add('cat_products', 'Resistance Band Medium', 8.00, 'C', null, 13);
   add('cat_products', 'Resistance Band Heavy', 10.00, 'C', null, 14);
   add('cat_products', 'Grip Trainer', 12.00, 'C', null, 15);
-  add('cat_products', 'Beanie', 15.00, 'C', 'BoulderRyn branded', 16);
-  add('cat_products', 'T-Shirt', 20.00, 'C', 'BoulderRyn branded', 17);
-  add('cat_products', 'Hoodie', 35.00, 'C', 'BoulderRyn branded', 18);
-  add('cat_products', 'Sticker', 2.00, 'C', 'BoulderRyn sticker', 19);
-  add('cat_products', 'Water Bottle', 12.00, 'C', 'BoulderRyn branded', 20);
+  add('cat_products', 'Beanie', 15.00, 'C', 'Gym branded', 16);
+  add('cat_products', 'T-Shirt', 20.00, 'C', 'Gym branded', 17);
+  add('cat_products', 'Hoodie', 35.00, 'C', 'Gym branded', 18);
+  add('cat_products', 'Sticker', 2.00, 'C', 'Gym sticker', 19);
+  add('cat_products', 'Water Bottle', 12.00, 'C', 'Gym branded', 20);
   add('cat_products', 'Chalk Loose 100g', 5.00, 'C', null, 21);
   add('cat_products', 'Chalk Loose 250g', 10.00, 'C', null, 22);
   add('cat_products', 'Hangboard', 45.00, 'C', null, 23);

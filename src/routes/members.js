@@ -3,11 +3,15 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const Member = require('../main/models/member');
-const { getDb } = require('../main/database/db');
+const { getDb, getPhotosDir } = require('../main/database/db');
 const multer = require('multer');
 
 const photoStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../../data/photos')),
+  destination: (req, file, cb) => {
+    const dir = getPhotosDir();
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
     cb(null, `${req.params.id}${ext}`);
@@ -343,7 +347,7 @@ router.get('/:id/qr-code', async (req, res, next) => {
     });
 
     res.set('Content-Type', 'image/png');
-    res.set('Content-Disposition', `inline; filename="boulderryn-qr-${member.first_name}-${member.last_name}.png"`);
+    res.set('Content-Disposition', `inline; filename="member-qr-${member.first_name}-${member.last_name}.png"`);
     res.send(qrBuffer);
   } catch (e) { next(e); }
 });
@@ -370,7 +374,8 @@ router.post('/:id/photo', upload.single('photo'), (req, res, next) => {
 // Serve photo
 router.get('/:id/photo', (req, res, next) => {
   try {
-    const dir = path.join(__dirname, '../../data/photos');
+    const dir = getPhotosDir();
+    if (!fs.existsSync(dir)) return res.status(404).json({ error: 'No photo' });
     const files = fs.readdirSync(dir).filter(f => f.startsWith(req.params.id));
     if (!files.length) return res.status(404).json({ error: 'No photo' });
     res.sendFile(path.join(dir, files[0]));

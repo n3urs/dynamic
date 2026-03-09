@@ -12,7 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 router.post('/payment-intent', async (req, res, next) => {
   try {
     if (!dojo.isConfigured()) {
-      return res.status(503).json({ error: 'Dojo not configured. Add DOJO_API_KEY to /etc/boulderryn.env' });
+      return res.status(503).json({ error: 'Dojo not configured. Add DOJO_API_KEY to /etc/dynamic.env' });
     }
     const { amountPence, reference, description } = req.body;
     if (!amountPence || amountPence <= 0) return res.status(400).json({ error: 'amountPence required' });

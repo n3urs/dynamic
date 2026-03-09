@@ -1,24 +1,106 @@
 /**
- * BoulderRyn — Express Web Server
+ * Dynamic — Express Web Server
  */
 
 const express = require('express');
 const path = require('path');
-const { getDb, closeDb } = require('./src/main/database/db');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { getDb, closeAll, gymContext } = require('./src/main/database/db');
+const fs = require('fs');
 
 // Models
 const Pass = require('./src/main/models/pass');
 const Waiver = require('./src/main/models/waiver');
 const { seedProducts } = require('./src/main/models/seed-products');
+const climberRoutes = require('./src/routes/climber');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+const DATA_ROOT = process.env.DYNAMIC_DATA_DIR || process.env.BOULDERRYN_DATA_DIR || path.join(__dirname, 'data');
 
-// Middleware
+// ── Security ───────────────────────────────────────────────────────────────
+
+app.use(helmet({
+  // CSP: allow Tailwind CDN, Google Fonts, YouTube embeds, inline scripts (app.js)
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.tailwindcss.com', 'fonts.googleapis.com'],
+      fontSrc: ["'self'", 'fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      frameSrc: ['www.youtube.com', 'youtube.com'],
+      connectSrc: ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // needed for YouTube iframes
+}));
+
+// Rate limiting for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later.' },
+});
+
+// ── Middleware ─────────────────────────────────────────────────────────────
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// API Routes
+// ── Gym context middleware ─────────────────────────────────────────────────
+// Resolves the active gym_id from the request subdomain and threads it
+// through the entire async call chain via AsyncLocalStorage.
+
+function detectFirstGym() {
+  const gymsDir = path.join(DATA_ROOT, 'gyms');
+  if (!fs.existsSync(gymsDir)) return null;
+  const entries = fs.readdirSync(gymsDir, { withFileTypes: true });
+  for (const e of entries) {
+    if (e.isDirectory() && fs.existsSync(path.join(gymsDir, e.name, 'gym.db'))) {
+      return e.name;
+    }
+  }
+  return null;
+}
+
+app.use((req, res, next) => {
+  const hostname = req.hostname || '';
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(hostname);
+  const isDynamic = hostname.endsWith('.dynamicgym.co.uk') || hostname.endsWith('.dynamicgym.io');
+
+  let gymId;
+
+  if (isLocal || (!isDynamic && !hostname.includes('.'))) {
+    // Local dev — use DEFAULT_GYM_ID or the first gym on disk
+    gymId = process.env.DEFAULT_GYM_ID || detectFirstGym();
+    if (!gymId) {
+      return res.status(503).json({
+        error: 'No gym provisioned. Run: node scripts/provision-gym.js <gym_id>'
+      });
+    }
+  } else {
+    // Production — extract subdomain: boulderryn.dynamicgym.co.uk → boulderryn
+    gymId = hostname.split('.')[0];
+    if (!gymId || !/^[a-z0-9-]{2,30}$/.test(gymId)) {
+      return res.status(400).json({ error: 'Invalid gym identifier in hostname.' });
+    }
+    // Reject requests for gyms that haven't been provisioned
+    const gymDbPath = path.join(DATA_ROOT, 'gyms', gymId, 'gym.db');
+    if (!fs.existsSync(gymDbPath)) {
+      return res.status(404).json({ error: `Gym "${gymId}" not found.` });
+    }
+  }
+
+  req.gymId = gymId; // convenience on req for routes that need it (e.g. photos)
+  gymContext.run({ gymId }, next);
+});
+
+// ── API Routes ─────────────────────────────────────────────────────────────
+
 app.use('/api/members', require('./src/routes/members'));
 app.use('/api/checkin', require('./src/routes/checkin'));
 app.use('/api/products', require('./src/routes/products'));
@@ -36,8 +118,11 @@ app.use('/api/stats', require('./src/routes/stats'));
 app.use('/api', require('./src/routes/register'));
 app.use('/api/dojo', require('./src/routes/dojo'));
 
+// Rate-limit auth endpoints (must be registered before the route handlers)
+app.use('/api/staff/auth', authLimiter);
+app.use('/api/climber/auth', authLimiter);
+
 // Climber portal API + pages
-const climberRoutes = require('./src/routes/climber');
 app.use('/api/climber', climberRoutes);
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'src', 'public', 'app.html')));
 app.get('/app/*', (req, res) => res.sendFile(path.join(__dirname, 'src', 'public', 'app.html')));
@@ -64,26 +149,30 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-// Start server
+// ── Start ──────────────────────────────────────────────────────────────────
+
 app.listen(PORT, () => {
-  // Ensure database is initialised
-  getDb();
+  // Seed defaults for all provisioned gyms on startup
+  const gymsDir = path.join(DATA_ROOT, 'gyms');
+  if (fs.existsSync(gymsDir)) {
+    const gymIds = fs.readdirSync(gymsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && fs.existsSync(path.join(gymsDir, e.name, 'gym.db')))
+      .map(e => e.name);
 
-  // Seed defaults on first run
-  Pass.seedDefaults();
-  Waiver.seedDefaults();
-  seedProducts();
+    for (const gymId of gymIds) {
+      gymContext.run({ gymId }, () => {
+        getDb(); // ensure connection is open
+        climberRoutes.ensureClimberTables();
+        Pass.seedDefaults();
+        Waiver.seedDefaults();
+        seedProducts();
+      });
+    }
+  }
 
-  console.log(`BoulderRyn running at http://localhost:${PORT}`);
+  console.log(`Dynamic running at http://localhost:${PORT}`);
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  closeDb();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  closeDb();
-  process.exit(0);
-});
+process.on('SIGINT', () => { closeAll(); process.exit(0); });
+process.on('SIGTERM', () => { closeAll(); process.exit(0); });

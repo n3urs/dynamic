@@ -1,6 +1,6 @@
 /**
- * Email service for BoulderRyn
- * Uses nodemailer with SMTP settings from the database
+ * Email service — uses nodemailer with SMTP settings from the database
+ * All gym name references are pulled from settings (gym_name key)
  */
 
 const nodemailer = require('nodemailer');
@@ -30,31 +30,36 @@ function getFromAddress() {
   return getSetting('email_from') || getSetting('email_smtp_user');
 }
 
+function getGymName() {
+  return getSetting('gym_name') || 'the gym';
+}
+
 /**
  * Send QR code email to a member
  */
 async function sendQrEmail(member, qrBuffer) {
   const transporter = createTransporter();
+  const gymName = getGymName();
   await transporter.sendMail({
     from: getFromAddress(),
     to: member.email,
-    subject: 'Your BoulderRyn Membership QR Code',
-    text: `Hi ${member.first_name},\n\nHere's your BoulderRyn QR code. Save this image to your phone and show it at the desk when you check in.\n\nYour code: ${member.qr_code}\n\nSee you on the wall!\nBoulderRyn`,
+    subject: `Your ${gymName} Membership QR Code`,
+    text: `Hi ${member.first_name},\n\nHere's your ${gymName} QR code. Save this image to your phone and show it at the desk when you check in.\n\nYour code: ${member.qr_code}\n\nSee you on the wall!\n${gymName}`,
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-        <h2 style="color: #1E3A5F;">BoulderRyn</h2>
+        <h2 style="color: #1E3A5F;">${gymName}</h2>
         <p>Hi ${member.first_name},</p>
-        <p>Here's your BoulderRyn QR code. Save this image to your phone and show it at the desk when you check in.</p>
+        <p>Here's your ${gymName} QR code. Save this image to your phone and show it at the desk when you check in.</p>
         <p style="text-align: center; margin: 24px 0;">
           <img src="cid:qrcode" alt="QR Code" style="width: 250px; height: 250px;" />
         </p>
         <p style="text-align: center; color: #666; font-size: 14px;">Code: ${member.qr_code}</p>
-        <p>See you on the wall!<br/>BoulderRyn</p>
+        <p>See you on the wall!<br/>${gymName}</p>
       </div>
     `,
     attachments: [
-      { filename: 'boulderryn-qr.png', content: qrBuffer, cid: 'qrcode' },
-      { filename: 'boulderryn-qr.png', content: qrBuffer }
+      { filename: 'membership-qr.png', content: qrBuffer, cid: 'qrcode' },
+      { filename: 'membership-qr.png', content: qrBuffer }
     ]
   });
 }
@@ -64,6 +69,7 @@ async function sendQrEmail(member, qrBuffer) {
  */
 async function sendReceiptEmail(member, transaction, items) {
   const transporter = createTransporter();
+  const gymName = getGymName();
   const date = new Date(transaction.created_at).toLocaleDateString('en-GB', {
     day: '2-digit', month: 'long', year: 'numeric'
   });
@@ -83,13 +89,13 @@ async function sendReceiptEmail(member, transaction, items) {
   await transporter.sendMail({
     from: getFromAddress(),
     to: member.email,
-    subject: `BoulderRyn Receipt - ${date}`,
-    text: `Hi ${member.first_name},\n\nHere's your receipt from BoulderRyn.\n\nDate: ${date}\nPayment: ${transaction.payment_method === 'dojo_card' ? 'Card' : transaction.payment_method}\n\nItems:\n${itemsText}\n\nTotal: £${parseFloat(transaction.total_amount).toFixed(2)}\n\nThank you for visiting BoulderRyn!`,
+    subject: `${gymName} Receipt - ${date}`,
+    text: `Hi ${member.first_name},\n\nHere's your receipt from ${gymName}.\n\nDate: ${date}\nPayment: ${transaction.payment_method === 'dojo_card' ? 'Card' : transaction.payment_method}\n\nItems:\n${itemsText}\n\nTotal: £${parseFloat(transaction.total_amount).toFixed(2)}\n\nThank you for visiting ${gymName}!`,
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-        <h2 style="color: #1E3A5F;">BoulderRyn</h2>
+        <h2 style="color: #1E3A5F;">${gymName}</h2>
         <p>Hi ${member.first_name},</p>
-        <p>Here's your receipt from BoulderRyn.</p>
+        <p>Here's your receipt from ${gymName}.</p>
         <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <p style="margin: 0 0 4px; color: #666; font-size: 14px;">Date: ${date}</p>
           <p style="margin: 0; color: #666; font-size: 14px;">Payment: ${transaction.payment_method === 'dojo_card' ? 'Card' : transaction.payment_method}</p>
@@ -105,7 +111,7 @@ async function sendReceiptEmail(member, transaction, items) {
           <tbody>${itemsHtml}</tbody>
         </table>
         <p style="text-align: right; font-size: 18px; font-weight: bold; color: #1E3A5F;">Total: £${parseFloat(transaction.total_amount).toFixed(2)}</p>
-        <p style="color: #666; font-size: 14px;">Thank you for visiting BoulderRyn!</p>
+        <p style="color: #666; font-size: 14px;">Thank you for visiting ${gymName}!</p>
       </div>
     `
   });
@@ -116,20 +122,21 @@ async function sendReceiptEmail(member, transaction, items) {
  */
 async function sendWaiverConfirmEmail(member) {
   const transporter = createTransporter();
+  const gymName = getGymName();
   await transporter.sendMail({
     from: getFromAddress(),
     to: member.email,
-    subject: 'BoulderRyn - Waiver Confirmed',
-    text: `Hi ${member.first_name},\n\nYour waiver has been recorded. See you at the gym!\n\nBoulderRyn`,
+    subject: `${gymName} - Waiver Confirmed`,
+    text: `Hi ${member.first_name},\n\nYour waiver has been recorded. See you at the gym!\n\n${gymName}`,
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-        <h2 style="color: #1E3A5F;">BoulderRyn</h2>
+        <h2 style="color: #1E3A5F;">${gymName}</h2>
         <p>Hi ${member.first_name},</p>
         <p>Your waiver has been recorded. You're all set to climb!</p>
         <p style="margin: 24px 0; text-align: center;">
           <span style="display: inline-block; background: #10B981; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 16px;">✓ Waiver Confirmed</span>
         </p>
-        <p>See you at the gym!<br/>BoulderRyn</p>
+        <p>See you at the gym!<br/>${gymName}</p>
       </div>
     `
   });
@@ -140,14 +147,15 @@ async function sendWaiverConfirmEmail(member) {
  */
 async function sendWelcomeEmail(member) {
   const transporter = createTransporter();
+  const gymName = getGymName();
   await transporter.sendMail({
     from: getFromAddress(),
     to: member.email,
-    subject: 'Welcome to BoulderRyn!',
-    text: `Hi ${member.first_name},\n\nWelcome to BoulderRyn! Your registration is complete.\n\nYou'll receive a separate email with your membership QR code — save it to your phone and show it at the desk when you check in.\n\nSee you on the wall!\nBoulderRyn`,
+    subject: `Welcome to ${gymName}!`,
+    text: `Hi ${member.first_name},\n\nWelcome to ${gymName}! Your registration is complete.\n\nYou'll receive a separate email with your membership QR code — save it to your phone and show it at the desk when you check in.\n\nSee you on the wall!\n${gymName}`,
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-        <h2 style="color: #1E3A5F;">Welcome to BoulderRyn!</h2>
+        <h2 style="color: #1E3A5F;">Welcome to ${gymName}!</h2>
         <p>Hi ${member.first_name},</p>
         <p>Your registration is complete. We're stoked to have you!</p>
         <p>You'll receive a separate email with your membership QR code — save it to your phone and show it at the desk when you check in.</p>
@@ -159,7 +167,7 @@ async function sendWelcomeEmail(member) {
             <li>Start climbing!</li>
           </ul>
         </div>
-        <p>See you on the wall!<br/>BoulderRyn</p>
+        <p>See you on the wall!<br/>${gymName}</p>
       </div>
     `
   });

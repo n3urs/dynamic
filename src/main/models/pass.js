@@ -192,7 +192,7 @@ const Pass = {
   },
 
   /**
-   * Seed the default BoulderRyn pass types
+   * Seed default pass types
    */
   seedDefaults() {
     const db = getDb();

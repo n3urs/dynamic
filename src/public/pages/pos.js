@@ -741,7 +741,7 @@ function posShowReceipt(txn, items, member, paymentMethod, extras = {}) {
           <p class="text-gray-500 text-xs mt-1">${member.qr_code || ''}</p>
         </div>
         <div class="flex gap-2 mt-2">
-          <a href="/api/members/${member.id}/qr-code?size=400" download="boulderryn-qr.png" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold text-center transition">Download QR</a>
+          <a href="/api/members/${member.id}/qr-code?size=400" download="member-qr.png" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold text-center transition">Download QR</a>
           ${member.email ? `<button onclick="posSendQrEmail('${member.id}')" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">Email QR</button>` : ''}
         </div>
       </div>

@@ -3,16 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy — BoulderRyn</title>
+  <title>Privacy Policy</title>
+  <link rel="icon" href="/assets/logos/icon.svg" type="image/svg+xml">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
   <div class="max-w-2xl mx-auto px-4 py-12">
     <div class="flex items-center gap-3 mb-8">
-      <img src="/logo.png" alt="BoulderRyn" class="h-10">
-      <div>
+      <img src="/assets/logos/logo-dark.svg" alt="Dynamic" class="h-10">
+      <div class="border-l border-gray-200 pl-4 ml-2">
         <h1 class="text-2xl font-bold text-[#1E3A5F]">Privacy Policy</h1>
-        <p class="text-sm text-gray-500">BoulderRyn Climbing Gym</p>
+        <p id="privacy-gym-name" class="text-sm text-gray-500">Climbing Gym</p>
       </div>
     </div>
 
@@ -20,7 +21,7 @@
 
       <section>
         <h2 class="text-base font-bold text-gray-900 mb-2">1. Who we are</h2>
-        <p>BoulderRyn is a climbing gym based in Penryn, Cornwall. We are the data controller for the personal information you provide to us. We are committed to protecting your personal data and complying with UK GDPR and the Data Protection Act 2018.</p>
+        <p id="privacy-intro">We are the data controller for the personal information you provide to us. We are committed to protecting your personal data and complying with UK GDPR and the Data Protection Act 2018.</p>
       </section>
 
       <section>
@@ -54,7 +55,7 @@
 
       <section>
         <h2 class="text-base font-bold text-gray-900 mb-2">4. How we store and protect your data</h2>
-        <p>Your data is stored on secure servers hosted in the European Economic Area (AWS EU-West region). All data in transit is encrypted using TLS. Access to personal data is restricted to authorised BoulderRyn staff only. We do not store payment card numbers — payments are processed by our card payment provider (Dojo/Paymentsense) who are PCI-DSS compliant.</p>
+        <p>Your data is stored on secure servers hosted in the European Economic Area (AWS EU-West region). All data in transit is encrypted using TLS. Access to personal data is restricted to authorised staff only. We do not store payment card numbers — payments are processed by our card payment provider (Dojo/Paymentsense) who are PCI-DSS compliant.</p>
       </section>
 
       <section>
@@ -78,7 +79,7 @@
           <li><strong>Object</strong> to processing based on legitimate interests</li>
           <li><strong>Withdraw consent</strong> for medical data processing at any time</li>
         </ul>
-        <p class="mt-2">To exercise any of these rights, contact us at: <a href="mailto:info@boulderryn.co.uk" class="text-blue-600 underline">info@boulderryn.co.uk</a></p>
+        <p class="mt-2">To exercise any of these rights, contact us at the gym directly or speak to a member of staff.</p>
       </section>
 
       <section>
@@ -104,5 +105,22 @@
       <a href="/register" class="text-sm text-blue-600 underline">← Back to registration</a>
     </div>
   </div>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const s = await res.json();
+          if (s && s.gym_name) {
+            const gymEl = document.getElementById('privacy-gym-name');
+            if (gymEl) gymEl.textContent = s.gym_name;
+            document.title = `Privacy Policy — ${s.gym_name}`;
+            const introEl = document.getElementById('privacy-intro');
+            if (introEl) introEl.textContent = `${s.gym_name} is the data controller for the personal information you provide to us. We are committed to protecting your personal data and complying with UK GDPR and the Data Protection Act 2018.`;
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
 </body>
 </html>

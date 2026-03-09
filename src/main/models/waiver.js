@@ -152,12 +152,15 @@ const Waiver = {
   },
 
   /**
-   * Seed default waiver templates for BoulderRyn
+   * Seed default waiver templates
    */
   seedDefaults() {
     const db = getDb();
     const existing = db.prepare('SELECT count(*) as c FROM waiver_templates').get().c;
     if (existing > 0) return;
+
+    const gymNameRow = db.prepare("SELECT value FROM settings WHERE key = 'gym_name'").get();
+    const gymName = (gymNameRow && gymNameRow.value) || 'the gym';
 
     // Adult form structure
     const adultContent = {
@@ -181,13 +184,13 @@ const Waiver = {
       ],
       confirmation_questions: [
         'Do you understand that failure to exercise due care, and follow the rules of the centre could result in injury or death?',
-        'Have you watched the BoulderRyn Induction Video?',
+        'Have you watched the Induction Video?',
         'Have you fully read and understood the conditions of this Participation Agreement?',
-        'Do you agree to abide by the rules and conditions set out in this document when using the facilities at BoulderRyn?',
+        `Do you agree to abide by the rules and conditions set out in this document when using the facilities at ${gymName}?`,
         'Do you understand that the matting does not remove the risk of injury?',
         'Having watched the video, do you feel you know how to climb safely?',
         'Are you, the person filling out this form, over 18 years of age?',
-        'Do you understand that failure to exercise due care, and follow the rules of the centre could result in you being asked to leave BoulderRyn?',
+        `Do you understand that failure to exercise due care, and follow the rules of the centre could result in you being asked to leave ${gymName}?`,
       ],
       final_checkboxes: [
         'I certify that to the best of my knowledge, I do not suffer from a medical condition that might have the effect of making it more likely that I will be involved in an accident that could result in injury to myself or others, OR I have discussed it with a duty manager and a risk assessment is in place.',
@@ -201,7 +204,7 @@ const Waiver = {
     const minorContent = {
       ...adultContent,
       additional_checkboxes: [
-        'Under 18 Photo ID Consent — I confirm that I am the parent/legal guardian of the above-named child and I consent to BoulderRyn Ltd taking and storing a photograph of my child for identification purposes at the reception desk only. I understand that this photograph will be used solely to help staff verify the child\'s identity and access rights, will be stored securely in line with data protection legislation, and will not be used for marketing or promotional purposes.',
+        `Under 18 Photo ID Consent — I confirm that I am the parent/legal guardian of the above-named child and I consent to ${gymName} taking and storing a photograph of my child for identification purposes at the reception desk only. I understand that this photograph will be used solely to help staff verify the child's identity and access rights, will be stored securely in line with data protection legislation, and will not be used for marketing or promotional purposes.`,
       ],
       signatures_required: ['supervisee', 'dependent'],
       requires_dependents: true,

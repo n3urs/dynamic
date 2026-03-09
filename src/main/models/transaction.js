@@ -276,13 +276,14 @@ const Transaction = {
       `<tr><td style="padding:4px 8px">${i.description}</td><td style="padding:4px 8px;text-align:center">${i.quantity}</td><td style="padding:4px 8px;text-align:right">£${i.total_price.toFixed(2)}</td></tr>`
     ).join('');
 
+    const gymName = getSetting('gym_name') || 'the gym';
     await transporter.sendMail({
       from: getSetting('email_from') || smtpUser,
       to: member.email,
-      subject: `BoulderRyn Receipt — £${txn.total_amount.toFixed(2)}`,
+      subject: `${gymName} Receipt — £${txn.total_amount.toFixed(2)}`,
       html: `
         <div style="font-family:sans-serif;max-width:500px;margin:0 auto">
-          <h2 style="color:#1E3A5F">BoulderRyn</h2>
+          <h2 style="color:#1E3A5F">${gymName}</h2>
           <p>Hi ${member.first_name},</p>
           <p>Here's your receipt:</p>
           <table style="width:100%;border-collapse:collapse;margin:16px 0">
@@ -300,7 +301,7 @@ const Transaction = {
           <p style="color:#64748B;font-size:13px">Payment: ${txn.payment_method === 'dojo_card' ? 'Card' : txn.payment_method}</p>
           <p style="color:#64748B;font-size:13px">Date: ${new Date(txn.created_at).toLocaleString('en-GB')}</p>
           <p style="color:#64748B;font-size:13px">Ref: ${txn.id.split('-')[0]}</p>
-          <p style="margin-top:24px">See you on the wall!<br/>BoulderRyn</p>
+          <p style="margin-top:24px">See you on the wall!<br/>${gymName}</p>
         </div>
       `,
     });

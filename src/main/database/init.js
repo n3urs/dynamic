@@ -9,8 +9,14 @@ const fs = require('fs');
 
 // In Electron, we'd use app.getPath('userData')
 // For standalone init, use a local data directory
-const DATA_DIR = process.env.BOULDERRYN_DATA_DIR || path.join(__dirname, '..', '..', '..', 'data');
-const DB_PATH = path.join(DATA_DIR, 'boulderryn.db');
+const DATA_DIR = process.env.DYNAMIC_DATA_DIR || process.env.BOULDERRYN_DATA_DIR || path.join(__dirname, '..', '..', '..', 'data');
+const LEGACY_DB_PATH = path.join(DATA_DIR, 'boulderryn.db');
+const DB_PATH = path.join(DATA_DIR, 'gym.db');
+// Auto-migrate legacy DB filename on first run
+if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+  fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+  console.log('Migrated database: boulderryn.db → gym.db');
+}
 const SCHEMA_PATH = path.join(__dirname, '..', '..', 'shared', 'schema.sql');
 
 function initDatabase() {

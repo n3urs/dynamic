@@ -1,18 +1,20 @@
 {
-  "name": "boulderryn",
+  "name": "dynamic",
   "version": "0.2.0",
-  "description": "BoulderRyn Climbing Gym Management System",
+  "description": "Dynamic — Climbing Gym Management Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "init-db": "node src/main/database/init.js"
   },
-  "author": "BoulderRyn",
+  "author": "Dynamic",
   "license": "PRIVATE",
   "dependencies": {
     "better-sqlite3": "^11.10.0",
     "express": "^4.21.0",
+    "express-rate-limit": "^8.3.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "nodemailer": "^6.10.1",

@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BoulderRyn — Register</title>
+  <title>New Climber Registration</title>
+  <link rel="icon" href="/assets/logos/icon.svg" type="image/svg+xml">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -24,10 +25,10 @@
   <!-- Header -->
   <header class="bg-[#1e3a5f] text-white py-4 px-4 shadow-lg">
     <div class="max-w-2xl mx-auto flex items-center gap-3">
-      <img src="/logo.png" alt="BoulderRyn" class="w-11 h-11">
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">BoulderRyn</h1>
-        <p class="text-blue-200 text-xs">New Climber Registration</p>
+      <img src="/assets/logos/logo-light.svg" alt="Dynamic" class="h-9">
+      <div class="border-l border-blue-400/40 pl-3 ml-1">
+        <h1 id="register-gym-name" class="text-sm font-semibold text-white leading-tight">New Climber</h1>
+        <p class="text-blue-200 text-xs">Registration</p>
       </div>
     </div>
   </header>
@@ -211,7 +212,7 @@
         <p class="font-bold text-gray-900 mb-2">Participation Statement</p>
         <p class="mb-3">All climbing and bouldering activities have a risk of serious injury or death. Participants must be aware of and accept that even if they follow all good practice there may still be the risk of accident and injury. It is the responsibility of the participant to adhere to the conditions of use.</p>
         <p class="font-bold text-gray-900 mb-2">Conditions of Use</p>
-        <p class="mb-2">By signing this document, you acknowledge that you have read, understood, and agree to abide by the rules and conditions set out by BoulderRyn when using the facilities. These include but are not limited to:</p>
+        <p class="mb-2">By signing this document, you acknowledge that you have read, understood, and agree to abide by the rules and conditions when using the facilities. These include but are not limited to:</p>
         <ul class="list-disc pl-5 space-y-1 text-gray-600">
           <li>General Safety — Follow all posted rules and staff instructions at all times.</li>
           <li>Bouldering — Climb only to the maximum permitted height. Check landing zones are clear before climbing.</li>
@@ -234,7 +235,7 @@
 
         <label class="checkbox-card flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer">
           <input type="checkbox" class="waiver-check mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 flex-shrink-0" required>
-          <span class="text-sm text-gray-700">Have you watched the BoulderRyn Induction Video?</span>
+          <span class="text-sm text-gray-700">Have you watched the Induction Video?</span>
         </label>
 
         <label class="checkbox-card flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer">
@@ -307,7 +308,7 @@
 
         <label class="checkbox-card flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer mb-3">
           <input type="checkbox" id="photo-id-consent" class="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 flex-shrink-0">
-          <span class="text-xs text-gray-700">I confirm that I am the parent/legal guardian of the above-named child and I consent to BoulderRyn Ltd taking and storing a photograph of my child for identification purposes at the reception desk only. This photograph will be used solely to verify identity, stored securely, and not used for marketing.</span>
+          <span class="text-xs text-gray-700">I confirm that I am the parent/legal guardian of the above-named child and I consent to the gym taking and storing a photograph of my child for identification purposes at the reception desk only. This photograph will be used solely to verify identity, stored securely, and not used for marketing.</span>
         </label>
       </div>
 
@@ -366,12 +367,12 @@
 
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" id="consent-privacy" class="mt-0.5 flex-shrink-0 w-4 h-4 text-[#1E3A5F]" required>
-          <span class="text-sm text-gray-700">I have read and agree to the <a href="/privacy" target="_blank" class="text-blue-600 underline font-medium">Privacy Policy</a>. I understand how BoulderRyn collects, uses and stores my personal data. <span class="text-red-500">*</span></span>
+          <span class="text-sm text-gray-700">I have read and agree to the <a href="/privacy" target="_blank" class="text-blue-600 underline font-medium">Privacy Policy</a>. I understand how the gym collects, uses and stores my personal data. <span class="text-red-500">*</span></span>
         </label>
 
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" id="consent-medical" class="mt-0.5 flex-shrink-0 w-4 h-4 text-[#1E3A5F]" required>
-          <span class="text-sm text-gray-700">I explicitly consent to BoulderRyn storing any medical information I have provided (under Article 9 UK GDPR) for safety purposes. I understand I can withdraw this consent at any time by contacting staff. <span class="text-red-500">*</span></span>
+          <span class="text-sm text-gray-700">I explicitly consent to the gym storing any medical information I have provided (under Article 9 UK GDPR) for safety purposes. I understand I can withdraw this consent at any time by contacting staff. <span class="text-red-500">*</span></span>
         </label>
 
         <label class="flex items-start gap-3 cursor-pointer">
@@ -398,7 +399,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
           </svg>
         </div>
-        <h2 class="text-2xl font-bold text-gray-900 mb-2" id="success-title">Welcome to BoulderRyn!</h2>
+        <h2 class="text-2xl font-bold text-gray-900 mb-2" id="success-title">Welcome!</h2>
         <p class="text-gray-500 mb-6">Please go to the front desk to complete your registration.</p>
         <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 inline-block">
           <p class="text-blue-800 text-sm font-medium">Registration fee: £3.00 (payable at desk)</p>
@@ -409,6 +410,21 @@
   </main>
 
   <script>
+    // Load gym name from settings and update header
+    (async function loadGymName() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const settings = await res.json();
+          if (settings && settings.gym_name) {
+            const el = document.getElementById('register-gym-name');
+            if (el) el.textContent = settings.gym_name;
+            document.title = `${settings.gym_name} — Register`;
+          }
+        }
+      } catch (e) {}
+    })();
+
     // =============================================
     // State
     // =============================================
@@ -806,7 +822,7 @@
 
         // Show success
         document.getElementById('success-title').textContent =
-          `Welcome to BoulderRyn, ${data.member.first_name}!`;
+          `Welcome, ${data.member.first_name}!`;
 
         document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
         document.getElementById('step-success').classList.add('active');

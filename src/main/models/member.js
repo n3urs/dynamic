@@ -308,31 +308,32 @@ const Member = {
       auth: { user: smtpUser, pass: smtpPass }
     });
 
+    const gymName = getSetting('gym_name') || 'the gym';
     await transporter.sendMail({
       from: getSetting('email_from') || smtpUser,
       to: member.email,
-      subject: `Your BoulderRyn Membership QR Code`,
-      text: `Hi ${member.first_name},\n\nHere's your BoulderRyn QR code. Save this image to your phone and show it at the desk when you check in.\n\nYour code: ${member.qr_code}\n\nSee you on the wall!\nBoulderRyn`,
+      subject: `Your ${gymName} Membership QR Code`,
+      text: `Hi ${member.first_name},\n\nHere's your ${gymName} QR code. Save this image to your phone and show it at the desk when you check in.\n\nYour code: ${member.qr_code}\n\nSee you on the wall!\n${gymName}`,
       html: `
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
-          <h2 style="color: #1E3A5F;">BoulderRyn</h2>
+          <h2 style="color: #1E3A5F;">${gymName}</h2>
           <p>Hi ${member.first_name},</p>
-          <p>Here's your BoulderRyn QR code. Save this image to your phone and show it at the desk when you check in.</p>
+          <p>Here's your ${gymName} QR code. Save this image to your phone and show it at the desk when you check in.</p>
           <p style="text-align: center; margin: 24px 0;">
             <img src="cid:qrcode" alt="QR Code" style="width: 250px; height: 250px;" />
           </p>
           <p style="text-align: center; color: #666; font-size: 14px;">Code: ${member.qr_code}</p>
-          <p>See you on the wall!<br/>BoulderRyn</p>
+          <p>See you on the wall!<br/>${gymName}</p>
         </div>
       `,
       attachments: [
         {
-          filename: 'boulderryn-qr.png',
+          filename: 'membership-qr.png',
           content: qrBuffer,
           cid: 'qrcode'
         },
         {
-          filename: 'boulderryn-qr.png',
+          filename: 'membership-qr.png',
           content: qrBuffer
         }
       ]

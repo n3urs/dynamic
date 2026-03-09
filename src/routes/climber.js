@@ -11,8 +11,8 @@ const nodemailer = require('nodemailer');
 const { getDb } = require('../main/database/db');
 
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
-  console.warn('[SECURITY] JWT_SECRET not set in environment — using insecure fallback. Set JWT_SECRET in /etc/boulderryn.env');
-  return 'boulderryn-climber-secret-2026-CHANGE-ME';
+  console.warn('[SECURITY] JWT_SECRET not set in environment — using insecure fallback. Set JWT_SECRET in /etc/dynamic.env');
+  return 'dynamic-climber-secret-CHANGE-ME';
 })();
 const JWT_EXPIRES = '30d';
 const CODE_EXPIRY_MINUTES = 10;
@@ -26,6 +26,10 @@ function hashCode(code) {
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
+
+// Called during server startup (inside gymContext.run) for each gym,
+// and lazily on first request if somehow missed.
+const ensuredGyms = new Set();
 
 function ensureClimberTables() {
   const db = getDb();
@@ -52,8 +56,12 @@ function ensureClimberTables() {
   `);
 }
 
-// Run on load
-ensureClimberTables();
+function ensureClimberTablesOnce(gymId) {
+  if (!ensuredGyms.has(gymId)) {
+    ensureClimberTables();
+    ensuredGyms.add(gymId);
+  }
+}
 
 function getEmailTransporter() {
   const db = getDb();
@@ -110,6 +118,7 @@ router.post('/auth/request-code', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
+    ensureClimberTablesOnce(req.gymId || 'default');
     const db = getDb();
     const member = db.prepare('SELECT * FROM members WHERE LOWER(email) = LOWER(?)').get(email.trim());
     if (!member) {
@@ -130,15 +139,18 @@ router.post('/auth/request-code', async (req, res) => {
     // Send email (with dev fallback if SMTP fails)
     let emailSent = false;
     try {
+      const db = getDb();
+      const gymNameRow = db.prepare("SELECT value FROM settings WHERE key = 'gym_name'").get();
+      const gymName = (gymNameRow && gymNameRow.value) || 'the gym';
       const transporter = getEmailTransporter();
       await transporter.sendMail({
-        from: `"BoulderRyn" <${getFromAddress()}>`,
+        from: `"${gymName}" <${getFromAddress()}>`,
         to: member.email,
-        subject: 'Your BoulderRyn Login Code',
-        text: `Hi ${member.first_name},\n\nYour login code is: ${code}\n\nThis code expires in ${CODE_EXPIRY_MINUTES} minutes.\n\nBoulderRyn`,
+        subject: `Your ${gymName} Login Code`,
+        text: `Hi ${member.first_name},\n\nYour login code is: ${code}\n\nThis code expires in ${CODE_EXPIRY_MINUTES} minutes.\n\n${gymName}`,
         html: `
           <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; text-align: center;">
-            <h2 style="color: #1E3A5F;">BoulderRyn</h2>
+            <h2 style="color: #1E3A5F;">${gymName}</h2>
             <p>Hi ${member.first_name},</p>
             <p>Your login code is:</p>
             <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #1E3A5F; margin: 24px 0; padding: 16px; background: #F1F5F9; border-radius: 8px;">${code}</div>
@@ -369,3 +381,4 @@ router.get('/visits', climberAuth, (req, res) => {
 });
 
 module.exports = router;
+module.exports.ensureClimberTables = ensureClimberTables;

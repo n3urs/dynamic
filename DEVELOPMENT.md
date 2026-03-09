@@ -10,21 +10,20 @@
 **Dynamic** — a multi-tenant SaaS climbing gym management platform.
 UK-first, bouldering-focused. Being built to sell to multiple gyms via subscription.
 
-This codebase was originally built for BoulderRyn gym (Penryn, Cornwall). It's now being generalised into a multi-gym product. The rebrand from "BoulderRyn" → "Dynamic" is in progress (see TODO below).
-
 ---
 
 ## Running Locally
 
 ```bash
 npm install
-PORT=8080 node server.js
+node scripts/provision-gym.js mygym "My Gym"   # first time only
+DEFAULT_GYM_ID=mygym PORT=8080 node server.js
 # Open http://localhost:8080
 ```
 
 Kill old instance: `pkill -f "node server.js"`
 Tunnel (for external testing): `/usr/local/bin/cloudflared tunnel --url http://localhost:8080`
-DB: `data/boulderryn.db` (will be renamed as part of multi-tenancy)
+DB: `data/gyms/{gym_id}/gym.db` per gym
 
 ---
 
@@ -65,8 +64,12 @@ src/
       waiver.js              — Waiver frontend
 reference/                   — Gym layout, waiver text, pricing reference docs
 data/
-  boulderryn.db              — SQLite database (single gym, dev)
-  photos/                    — Member photo uploads
+  gyms/
+    {gym_id}/
+      gym.db                 — Per-gym SQLite database
+      photos/                — Per-gym member photo uploads
+scripts/
+  provision-gym.js           — Provision a new gym (creates DB, seeds defaults)
 ```
 
 ---
@@ -128,52 +131,45 @@ Test data: 7 members, 2 with active passes, 3 seeded climbs, 2 seeded events.
 
 ---
 
-## ⚠️ REBRAND TODO (for Claude Code)
+## ✅ REBRAND COMPLETE
 
-The codebase still contains many references to "BoulderRyn" that need updating as part of the Dynamic platform rebrand. These should be replaced with config-driven values from `settings` table (gym name, gym brand) rather than hardcoded.
+All "BoulderRyn" references replaced with config-driven values. Logos in `src/public/assets/logos/`:
+- `logo-compact.svg` — sidebar (white wordmark, dark bg)
+- `logo-light.svg` — dark bg pages (first-run, register header)
+- `logo-dark.svg` — light bg pages (member portal login, privacy policy)
+- `icon.svg` — favicon + PWA icon
 
-Files containing "BoulderRyn" / "boulderryn" references:
-- `src/main/database/init.js` — DB init references
-- `src/main/database/db.js` — DB filename, JWT secret string
-- `src/main/models/member.js` — email templates ("BoulderRyn" in email body)
-- `src/main/models/transaction.js` — email templates
-- `src/main/models/pass.js` — references
-- `src/main/models/waiver.js` — references
-- `src/main/models/staff.js` — JWT secret fallback string
-- `src/main/models/seed-products.js` — product seed data
-- `src/main/services/email.js` — email from address, subject lines, HTML templates
-- `src/routes/members.js` — references
-- `src/routes/climber.js` — JWT secret, email templates
-- `src/routes/dojo.js` — references
-- `src/public/pages/pos.js` — UI text
-- `src/public/pages/waiver.js` — waiver text, gym name in copy
-- `src/public/app.js` — gym name, logo alt text, "BoulderRyn" in UI
-- `src/integrations/dojo.js` — references
-- `server.js` — env file reference (`/etc/boulderryn.env`)
-
-**Approach:** Gym name, logo, contact email, colours etc. should all come from the `settings` table (already has entries for `gym_name`, `gym_email`, etc.). Replace hardcoded strings with `getSetting('gym_name')` calls. The sidebar heading "BoulderRyn" in `index.html` and `app.js` should read from settings.
+Gym name (`settings.gym_name`) still surfaces in: sidebar footer, browser title, email subjects.
 
 ---
 
-## 🏗️ Multi-Tenancy TODO (next major milestone)
+## ✅ MULTI-TENANCY CORE COMPLETE
 
-Current state: single-tenant (one gym, one DB). To sell to multiple gyms:
+Per-gym DB isolation in place. Fully smoke-tested.
 
-1. **Per-gym DB isolation** — move to `data/gyms/{gym_id}/gym.db` structure
-2. **Gym provisioning script** — `scripts/provision-gym.js` — creates DB, seeds defaults, creates owner account
-3. **Subdomain routing** — `gymname.dynamicgym.co.uk` → loads correct gym DB
-4. **Super-admin panel** — Oscar can view all gyms, status, usage, billing
-5. **Stripe billing** — subscription management, webhook for active/inactive
-6. **Gym signup flow** — new gym registers, pays, gets provisioned automatically
+- `data/gyms/{gym_id}/gym.db` — per-gym SQLite
+- `src/main/database/gymContext.js` — AsyncLocalStorage threads `gym_id` through all async calls
+- `src/main/database/db.js` — `connections` Map, `getDb()`, `getPhotosDir()`, `closeAll()`
+- `server.js` — gym middleware resolves from subdomain (prod) or `DEFAULT_GYM_ID` / first-on-disk (dev)
+- `scripts/provision-gym.js` — provision a new gym
+
+---
+
+## 🏗️ Next Milestones
+
+1. **Subdomain routing** — nginx config for `*.dynamicgym.co.uk` → Node server
+2. **Super-admin panel** — view all gyms, status, usage
+3. **Stripe billing** — subscription management, webhook for active/inactive
+4. **Gym signup flow** — self-service provisioning
 
 ---
 
 ## Security (pre-launch checklist)
 
-- [ ] Set `JWT_SECRET` in environment (currently falls back to insecure hardcoded string)
-- [ ] Add `helmet` middleware to server.js
-- [ ] Rate limit PIN/auth endpoints
-- [ ] `chmod 600 data/*.db`
+- [ ] Set `JWT_SECRET` in `/etc/dynamic.env`
+- [x] `helmet` middleware — ✅ done
+- [x] Rate limit auth endpoints — ✅ done
+- [ ] `chmod 600 data/gyms/*/gym.db`
 - [ ] Run behind HTTPS (nginx + Let's Encrypt)
 
 ---
