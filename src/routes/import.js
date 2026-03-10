@@ -15,6 +15,7 @@ const router = express.Router();
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../main/database/db');
+const gymContext = require('../main/database/gymContext');
 
 // In-memory storage — no files written to disk
 const upload = multer({
@@ -270,7 +271,17 @@ function parseDate(str) {
 
 // ── POST /api/import/members ───────────────────────────────────────────────
 
-router.post('/members', upload.single('file'), (req, res) => {
+router.post('/members',
+  // Capture gymId BEFORE multer processes the body (multer can lose AsyncLocalStorage context)
+  (req, res, next) => { req._gymId = gymContext.getStore()?.gymId; next(); },
+  upload.single('file'),
+  (req, res) => {
+  // Re-establish gym context in case multer lost it
+  const runInContext = (fn) => {
+    if (req._gymId) return gymContext.run({ gymId: req._gymId }, fn);
+    return fn();
+  };
+  runInContext(() => {
   if (!req.file) {
     return res.status(400).json({ ok: false, error: 'No file uploaded. Send a CSV as multipart field "file".' });
   }
@@ -390,6 +401,7 @@ router.post('/members', upload.single('file'), (req, res) => {
   }
 
   res.json({ ok: true, imported, skipped, errors });
-});
+  }); // end runInContext
+}); // end router.post
 
 module.exports = router;
