@@ -359,13 +359,22 @@ async function loadNoticeboard() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (async function init() {
-  // Load gym name
+  // Load gym settings (name, colour theme, shop URL)
   try {
-    const res = await fetch('/api/settings/gym_name');
-    const data = await res.json();
-    if (data.value) {
-      document.getElementById('me-gym-name').textContent = data.value;
-      document.title = data.value + ' · Member Portal';
+    const res = await fetch('/api/settings');
+    const s = await res.json();
+    if (s.gym_name) {
+      document.getElementById('me-gym-name').textContent = s.gym_name;
+      document.title = s.gym_name + ' · Member Portal';
+    }
+    if (s.portal_colour) {
+      document.documentElement.style.setProperty('--portal-accent', s.portal_colour);
+      // Apply to tab bar active colour and QR colour via meta theme-color
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', s.portal_colour);
+    }
+    if (s.portal_shop_url) {
+      const link = document.getElementById('home-shop-link');
+      if (link) { link.href = s.portal_shop_url; link.classList.remove('hidden'); }
     }
   } catch {}
 

@@ -6373,6 +6373,33 @@ async function loadGeneralSettings() {
           </div>
         </div>
 
+        <!-- Member Portal Settings -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5 max-w-2xl mt-4">
+          <h4 class="font-medium text-gray-900 mb-1 flex items-center gap-2">
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            Member Portal
+          </h4>
+          <p class="text-xs text-gray-500 mb-4">Customise the member-facing app at <strong>/me</strong>.</p>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Accent Colour</label>
+              <div class="flex items-center gap-3">
+                <input type="color" id="portal-colour-input" value="${settings.portal_colour || '#1E3A5F'}"
+                  class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5">
+                <span class="text-sm text-gray-500">Used as the primary colour in the member portal</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Pass Shop URL <span class="text-gray-400 font-normal normal-case">(optional)</span></label>
+              <input type="url" id="portal-shop-url-input" value="${settings.portal_shop_url || ''}"
+                placeholder="https://your-shop.com/passes"
+                class="form-input text-sm">
+              <p class="text-xs text-gray-400 mt-1">If set, members without an active pass see a "Buy a Pass" button linking here.</p>
+            </div>
+            <button onclick="savePortalSettings()" class="btn btn-primary text-sm">Save Portal Settings</button>
+          </div>
+        </div>
+
         <!-- Data Export -->
         <div class="bg-white border border-gray-200 rounded-xl p-5 max-w-2xl mt-4">
           <h4 class="font-medium text-gray-900 mb-1 flex items-center gap-2">
@@ -6417,6 +6444,20 @@ async function saveGeneralSettings(e) {
     showToast('Settings saved', 'success');
   } catch (err) {
     showToast('Error saving settings: ' + err.message, 'error');
+  }
+}
+
+async function savePortalSettings() {
+  const colour = document.getElementById('portal-colour-input')?.value || '';
+  const shopUrl = document.getElementById('portal-shop-url-input')?.value?.trim() || '';
+  try {
+    await Promise.all([
+      api('PUT', '/api/settings/portal_colour', { value: colour }),
+      api('PUT', '/api/settings/portal_shop_url', { value: shopUrl }),
+    ]);
+    showToast('Portal settings saved', 'success');
+  } catch (err) {
+    showToast('Error saving portal settings: ' + err.message, 'error');
   }
 }
 

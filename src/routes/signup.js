@@ -49,7 +49,8 @@ router.post('/check-availability', (req, res) => {
 // ── POST /api/signup/create ────────────────────────────────────────────────
 
 router.post('/create', async (req, res) => {
-  const { gymId, gymName, ownerEmail, ownerPassword, ownerFirstName, ownerLastName, plan: planId } = req.body;
+  const { gymId, gymName, ownerEmail, ownerPassword, ownerFirstName, ownerLastName, plan: planId, billing } = req.body;
+  const isAnnual = billing === 'annual';
 
   if (!gymId || !gymName || !ownerEmail) {
     return res.status(400).json({ error: 'gymId, gymName, and ownerEmail are required' });
@@ -129,7 +130,11 @@ router.post('/create', async (req, res) => {
     const db = getPlatformDb();
     const record = db.prepare('SELECT * FROM gym_billing WHERE gym_id = ?').get(gymId);
 
-    const PLANS = {
+    const PLANS = isAnnual ? {
+      starter: process.env.STRIPE_PRICE_STARTER_ANNUAL || process.env.STRIPE_PRICE_STARTER,
+      growth:  process.env.STRIPE_PRICE_GROWTH_ANNUAL  || process.env.STRIPE_PRICE_GROWTH,
+      scale:   process.env.STRIPE_PRICE_SCALE_ANNUAL   || process.env.STRIPE_PRICE_SCALE,
+    } : {
       starter: process.env.STRIPE_PRICE_STARTER,
       growth:  process.env.STRIPE_PRICE_GROWTH,
       scale:   process.env.STRIPE_PRICE_SCALE,

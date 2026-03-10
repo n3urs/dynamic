@@ -26,7 +26,7 @@ function requireBilling(req, res, next) {
 
   const { status, trial_ends_at } = record;
 
-  if (status === 'cancelled' || status === 'unpaid') {
+  if (status === 'cancelled' || status === 'unpaid' || status === 'suspended') {
     return res.status(402).json({
       error: 'subscription_required',
       upgradeUrl: '/billing/create-checkout',

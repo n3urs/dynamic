@@ -98,13 +98,28 @@
 
     <!-- Step 3: Plan -->
     <div class="step" id="step-3">
-      <h2 class="text-lg font-semibold text-gray-900 mb-5">Choose a plan</h2>
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Choose a plan</h2>
+
+      <!-- Billing toggle -->
+      <div class="flex items-center justify-center mb-4">
+        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <button id="toggle-monthly" onclick="setBilling('monthly')"
+            class="text-xs font-semibold px-3 py-1.5 rounded-md bg-white shadow text-gray-900 transition">
+            Monthly
+          </button>
+          <button id="toggle-annual" onclick="setBilling('annual')"
+            class="text-xs font-semibold px-3 py-1.5 rounded-md text-gray-500 transition">
+            Annual <span class="text-green-600 font-bold">2 months free</span>
+          </button>
+        </div>
+      </div>
+
       <div class="space-y-2 mb-5" id="plan-options">
         <label class="plan-card flex items-start gap-3 border-2 border-gray-200 rounded-xl p-4" data-plan="starter">
           <div class="flex-1">
             <div class="flex items-center justify-between">
               <span class="font-semibold text-gray-900 text-sm">Starter</span>
-              <span class="text-sm font-bold text-gray-900">£59<span class="text-gray-400 font-normal text-xs">/mo</span></span>
+              <span class="text-sm font-bold text-gray-900" id="price-starter">£59<span class="text-gray-400 font-normal text-xs">/mo</span></span>
             </div>
             <p class="text-xs text-gray-500 mt-0.5">Up to 500 members · Core features</p>
           </div>
@@ -118,7 +133,7 @@
                 <span class="font-semibold text-gray-900 text-sm">Growth</span>
                 <span class="text-xs font-semibold text-[#1E3A5F] bg-blue-50 px-2 py-0.5 rounded-full">Popular</span>
               </div>
-              <span class="text-sm font-bold text-gray-900">£99<span class="text-gray-400 font-normal text-xs">/mo</span></span>
+              <span class="text-sm font-bold text-gray-900" id="price-growth">£99<span class="text-gray-400 font-normal text-xs">/mo</span></span>
             </div>
             <p class="text-xs text-gray-500 mt-0.5">Unlimited members · Full feature set</p>
           </div>
@@ -129,7 +144,7 @@
           <div class="flex-1">
             <div class="flex items-center justify-between">
               <span class="font-semibold text-gray-900 text-sm">Scale</span>
-              <span class="text-sm font-bold text-gray-900">£149<span class="text-gray-400 font-normal text-xs">/mo</span></span>
+              <span class="text-sm font-bold text-gray-900" id="price-scale">£149<span class="text-gray-400 font-normal text-xs">/mo</span></span>
             </div>
             <p class="text-xs text-gray-500 mt-0.5">Multiple locations · Advanced analytics</p>
           </div>
@@ -165,6 +180,34 @@
 
   <script>
     let currentStep = 1;
+    let billingPeriod = 'monthly';
+
+    const PRICES = {
+      monthly: { starter: '£59', growth: '£99', scale: '£149', suffix: '/mo' },
+      annual:  { starter: '£49', growth: '£82', scale: '£124', suffix: '/mo, billed annually' },
+    };
+
+    function setBilling(period) {
+      billingPeriod = period;
+      const p = PRICES[period];
+      document.getElementById('price-starter').innerHTML = `${p.starter}<span class="text-gray-400 font-normal text-xs">${p.suffix}</span>`;
+      document.getElementById('price-growth').innerHTML  = `${p.growth}<span class="text-gray-400 font-normal text-xs">${p.suffix}</span>`;
+      document.getElementById('price-scale').innerHTML   = `${p.scale}<span class="text-gray-400 font-normal text-xs">${p.suffix}</span>`;
+
+      const mBtn = document.getElementById('toggle-monthly');
+      const aBtn = document.getElementById('toggle-annual');
+      if (period === 'monthly') {
+        mBtn.classList.add('bg-white', 'shadow', 'text-gray-900');
+        mBtn.classList.remove('text-gray-500');
+        aBtn.classList.remove('bg-white', 'shadow', 'text-gray-900');
+        aBtn.classList.add('text-gray-500');
+      } else {
+        aBtn.classList.add('bg-white', 'shadow', 'text-gray-900');
+        aBtn.classList.remove('text-gray-500');
+        mBtn.classList.remove('bg-white', 'shadow', 'text-gray-900');
+        mBtn.classList.add('text-gray-500');
+      }
+    }
 
     // Plan selection
     document.querySelectorAll('.plan-card').forEach(card => {
@@ -282,6 +325,7 @@
       const firstName = document.getElementById('first-name').value.trim();
       const lastName  = document.getElementById('last-name').value.trim();
       const plan      = document.querySelector('input[name=plan]:checked')?.value || 'growth';
+      const billing   = billingPeriod;
       const errEl     = document.getElementById('step3-error');
       errEl.classList.add('hidden');
 
@@ -293,7 +337,7 @@
         const res = await fetch('/api/signup/create', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ gymId, gymName, ownerEmail: email, ownerPassword: password, ownerFirstName: firstName, ownerLastName: lastName, plan }),
+          body: JSON.stringify({ gymId, gymName, ownerEmail: email, ownerPassword: password, ownerFirstName: firstName, ownerLastName: lastName, plan, billing }),
         });
         const data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Something went wrong'; errEl.classList.remove('hidden'); btn.textContent = 'Start Trial →'; btn.disabled = false; return; }
