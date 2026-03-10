@@ -185,6 +185,7 @@ app.use('/api/me', require('./src/routes/me'));
 // Rate-limit auth endpoints (must be registered before the route handlers)
 app.use('/api/staff/auth', authLimiter);
 app.use('/api/climber/auth', authLimiter);
+app.use('/api/me/auth', authLimiter);
 
 // Climber portal API + pages
 app.use('/api/climber', climberRoutes);
