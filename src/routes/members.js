@@ -202,12 +202,12 @@ router.get('/tags/types', (req, res, next) => {
 router.post('/:id/tags', (req, res, next) => {
   try {
     const db = getDb();
-    const { tag_id, note, expires_at, applied_by } = req.body;
+    const { tag_id, applied_by } = req.body;
     if (!tag_id) return res.status(400).json({ error: 'tag_id required' });
-    db.prepare(`INSERT INTO member_tags (member_id, tag_id, note, expires_at, applied_at, applied_by)
-      VALUES (?, ?, ?, ?, datetime('now'), ?)
-      ON CONFLICT(member_id, tag_id) DO UPDATE SET note=excluded.note, expires_at=excluded.expires_at, applied_at=excluded.applied_at, applied_by=excluded.applied_by`)
-      .run(req.params.id, tag_id, note || null, expires_at || null, applied_by || null);
+    db.prepare(`INSERT INTO member_tags (member_id, tag_id, applied_at, applied_by)
+      VALUES (?, ?, datetime('now'), ?)
+      ON CONFLICT(member_id, tag_id) DO UPDATE SET applied_at=excluded.applied_at, applied_by=excluded.applied_by`)
+      .run(req.params.id, tag_id, applied_by || null);
     res.json({ success: true });
   } catch (e) { next(e); }
 });
