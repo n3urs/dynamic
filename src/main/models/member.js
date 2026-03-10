@@ -208,7 +208,7 @@ const Member = {
     `).all(id);
 
     const tags = db.prepare(`
-      SELECT t.*, mt.expires_at as tag_expires_at, mt.applied_at, mt.applied_by
+      SELECT t.*, mt.applied_at, mt.applied_by
       FROM member_tags mt
       JOIN tags t ON mt.tag_id = t.id
       WHERE mt.member_id = ?
